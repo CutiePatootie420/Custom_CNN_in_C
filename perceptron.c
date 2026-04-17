@@ -8,7 +8,7 @@ typedef struct perceptron
     int output;
     struct perceptron* next;
 }perceptron;
-perceptron* init_basic_perceptron(int bias,int input1,int input2)
+perceptron* nand_gate(int bias,int input1,int input2)
 {
     perceptron* temp=malloc(sizeof(perceptron));
     temp->bias=bias;
@@ -20,7 +20,7 @@ perceptron* init_basic_perceptron(int bias,int input1,int input2)
 }
 int main()
 {
-    perceptron* temp=init_basic_perceptron(3,-2,-2);
+    perceptron* temp=nand_gate(3,-2,-2);
     printf("%d",temp->output);
     return 0;
 }
