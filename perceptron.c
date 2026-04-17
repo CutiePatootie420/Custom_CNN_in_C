@@ -34,9 +34,31 @@ int run_basic_perceptron(perceptron* temp,int* input, int n)
     }
     return (x+(temp->bias))<=0?0:1;
 }
+int run_nand_gate(int* input)
+{
+    return run_basic_perceptron(nand_gate(),input,2);
+}
+void bit_addition(int* x, int* sum, int* carry)
+{
+    int out1=run_nand_gate(x);
+    int in2[2]={x[0],out1};
+    int out2=run_nand_gate(in2);
+    int in3[2]={out1,x[1]};
+    int out3=run_nand_gate(in3);
+    int in4[2]={out2,out3};
+    int out4=run_nand_gate(in4);
+    int in5[2]={out1,out1};
+    int out5=run_nand_gate(in5);
+    *sum=out4;
+    *carry=out5;
+    
+}
 int main()
 {
-    int array[2]={1,1};
-    printf("%d",run_basic_perceptron(nand_gate(),array,2));
+    int array[2]={0,1};
+    int sum;
+    int carry;
+    bit_addition(array,&sum,&carry);
+    printf("%d %d",sum,carry);
     return 0;
 }
