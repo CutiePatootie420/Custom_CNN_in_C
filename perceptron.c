@@ -14,7 +14,7 @@ perceptron* init_basic_perceptron(int bias,int input1,int input2)
     temp->bias=bias;
     temp->input1=input1;
     temp->input2=input2;
-    temp->output=input1+input2+bias;
+    temp->output=(input1+input2+bias)<=0?0:1;
     temp->next=NULL;
     return temp;
 }
