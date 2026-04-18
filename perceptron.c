@@ -2,63 +2,70 @@
 #include <stdlib.h>
 typedef struct perceptron
 {
-    int bias;
-    int num_of_inputs;
-    int* weights;
+    double bias;
+    double temp_sum;
     struct perceptron* next;
 }perceptron;
-perceptron* init_basic_perceptron(int bias,int n,int* weight)
+perceptron* init_basic_perceptron(double bias)
 {
     perceptron* temp=malloc(sizeof(perceptron));
     temp->bias=bias;
-    temp->num_of_inputs=n;
-    temp->weights=malloc(sizeof(int)*temp->num_of_inputs);
-    for(int i=0;i<n;i++)
-    {
-        temp->weights[i]=weight[i];
-    }
+    temp->temp_sum=0;
     temp->next=NULL;
     return temp;
 }
-perceptron* nand_gate()
+void run_basic_perceptron(double weight,double input, perceptron* temp)
 {
-    int weights[2]={-2,-2};
-    return init_basic_perceptron(3,2,weights);
+    temp->temp_sum+=(weight*input);
 }
-int run_basic_perceptron(perceptron* temp,int* input, int n)
+void fire_perceptron(double weight,perceptron* curr)
 {
-    int x=0;
-    for(int i=0;i<n;i++)
+    int output;
+    if(curr->temp_sum+curr->bias>0)
     {
-        x+=(temp->weights[i]*input[i]);
+        output=1;
     }
-    return (x+(temp->bias))<=0?0:1;
+    else
+    {
+        output=0;
+    }
+    run_basic_perceptron(weight,output,curr->next);
 }
-int run_nand_gate(int* input)
+void bit_addition(int x1, int x2,int* sum, int* carry)
 {
-    return run_basic_perceptron(nand_gate(),input,2);
-}
-void bit_addition(int* x, int* sum, int* carry)
-{
-    int out1=run_nand_gate(x);
-    int in2[2]={x[0],out1};
-    int out2=run_nand_gate(in2);
-    int in3[2]={out1,x[1]};
-    int out3=run_nand_gate(in3);
-    int in4[2]={out2,out3};
-    int out4=run_nand_gate(in4);
-    int in5[2]={out1,out1};
-    int out5=run_nand_gate(in5);
-    *sum=out4;
-    *carry=out5;
-    
+    double bias=3;
+    double w=-2;
+    perceptron* out1=init_basic_perceptron(bias);
+    run_basic_perceptron(w,x1,out1);
+    run_basic_perceptron(w,x2,out1);
+    perceptron* out2=init_basic_perceptron(bias);
+    out1->next=out2;
+    run_basic_perceptron(w,x1,out2);
+    fire_perceptron(w,out1);
+
+    perceptron* out3=init_basic_perceptron(bias);
+    run_basic_perceptron(w,x2,out3);
+    out1->next=out3;
+    fire_perceptron(w,out1);
+    perceptron* out4=init_basic_perceptron(bias);
+    out2->next=out4;
+    fire_perceptron(w,out2);
+    out3->next=out4;
+    fire_perceptron(w,out3);
+    perceptron* out5=init_basic_perceptron(bias);
+    out1->next=out5;
+    fire_perceptron(w,out1);
+    fire_perceptron(w,out1);
+    *sum=(out4->temp_sum+out4->bias)>0?1:0;
+    *carry=(out5->temp_sum+out5->bias)>0?1:0;
 }
 int main()
 {
-    int array[2]={0,1};
+    int x1=0;
+    int x2=0;
     int sum;
     int carry;
-    bit_addition(array,&sum,&carry);
+    bit_addition(x1,x2,&sum,&carry);
     printf("%d %d",sum,carry);
     return 0;
 }
