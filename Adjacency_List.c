@@ -6,54 +6,45 @@
 typedef struct temp
 {
     int info;
+    int count;
+    int in_order;
+    struct temp** arr;
+    
+
 }temp;
 int main()
 {
-    int** adjacency_mtx=malloc(sizeof(int*)*SIZE);
-    adjacency_mtx[0]=malloc(sizeof(int)*4);
-    adjacency_mtx[1]=malloc(sizeof(int)*2);
-    adjacency_mtx[2]=malloc(sizeof(int)*1);
-    adjacency_mtx[3]=malloc(sizeof(int)*3);
-    adjacency_mtx[4]=malloc(sizeof(int)*1);
-    adjacency_mtx[5]=malloc(sizeof(int)*1);
-    adjacency_mtx[0][0]=1;
-    adjacency_mtx[0][1]=3;
-    adjacency_mtx[0][2]=4;
-    adjacency_mtx[0][3]=NONE;
-    adjacency_mtx[1][0]=2;
-    adjacency_mtx[1][1]=NONE;
-    adjacency_mtx[2][0]=NONE;
-    adjacency_mtx[3][0]=2;
-    adjacency_mtx[3][1]=5;
-    adjacency_mtx[3][2]=NONE;
-    adjacency_mtx[4][0]=NONE;
-    adjacency_mtx[5][0]=NONE;
-    temp* temp_arr=malloc(sizeof(temp)*SIZE);
+    temp* graph=malloc(sizeof(temp)*SIZE);
+    int sizes[]={3,1,0,2,0,0};
     for(int i=0;i<SIZE;i++)
     {
-        temp_arr[i].info=i+1;
+        graph[i].count=sizes[i];
+        graph[i].in_order=0;
+        graph[i].arr=malloc(sizeof(temp*)*graph[i].count);
+        graph[i].info=i+1;
     }
-    int in_order[SIZE];
-    memset(in_order,0,sizeof(in_order));
+    graph[0].arr[0]=&graph[1];
+    graph[0].arr[1]=&graph[3];
+    graph[0].arr[2]=&graph[4];
+    graph[1].arr[0]=&graph[2];
+    graph[3].arr[0]=&graph[2];
+    graph[3].arr[1]=&graph[5];
     for(int i=0;i<SIZE;i++)
     {
-        for(int j=0;adjacency_mtx[i][j]!=NONE;j++)
+        for(int j=0;j<graph[i].count;j++)
         {
-            in_order[adjacency_mtx[i][j]]++;
+            graph[i].arr[j]->in_order++;
         }
     }
     for(int i=0;i<SIZE;i++)
     {
-        printf("%c: %d\n",i+'A',in_order[i]);
+        printf("%c %d\n",i+'A',graph[i].in_order);
     }
-
-
     for(int i=0;i<SIZE;i++)
     {
-        free(adjacency_mtx[i]);
+        free(graph[i].arr);
     }
-    free(adjacency_mtx);
-    free(temp_arr);
+    free(graph);
     return 0;
 }
 
