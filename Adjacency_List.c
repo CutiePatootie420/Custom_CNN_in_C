@@ -12,6 +12,7 @@ typedef struct temp
     
 
 }temp;
+
 int main()
 {
     temp* graph=malloc(sizeof(temp)*SIZE);
