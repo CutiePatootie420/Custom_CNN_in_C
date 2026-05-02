@@ -52,7 +52,7 @@ int main()
             }
         }
     }
-    for(int i=0;i<)
+    
     for(int i=0;i<sizeof(cnn_info)/sizeof(cnn_info[0]);i++)
     {
         free(layers[i].gs_vals);
