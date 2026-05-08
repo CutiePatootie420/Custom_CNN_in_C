@@ -1,1 +1,1 @@
-![Neural Network](./images/network.png)
+![Neural Network](./images/cnn illustration.png)
