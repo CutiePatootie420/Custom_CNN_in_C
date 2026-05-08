@@ -130,7 +130,7 @@ int main()
     int image_index;
 
     double* cost=malloc(sizeof(double)*cnn_summary[num_layers-1]);
-
+    double final_cost;
 
     for(int iter=0;iter<iterations;iter++) //selecting random images
     {
@@ -147,10 +147,23 @@ int main()
             sigmoid_func(cnn[j].activation,cnn_summary[j]);
         }
 
-        printf("Printing output of final layer: \n");
         for(int i=0;i<cnn_summary[num_layers-1];i++)
         {
             printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
+        }
+
+        final_cost=0; 
+        for(int i=0;i<cnn_summary[num_layers-1];i++) //cost 
+        {
+            if(labels[image_index]==i)
+            {
+                cost[i]=(1-cnn[num_layers-1].activation[i])*(1-cnn[num_layers-1].activation[i]);
+            }
+            else
+            {
+                cost[i]=(cnn[num_layers-1].activation[i])*cnn[num_layers-1].activation[i];
+            }
+            final_cost+=cost[i];
         }
         
     }
