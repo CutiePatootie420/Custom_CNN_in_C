@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <string.h>
 typedef struct layer
 {
     double* activation;
@@ -57,6 +58,11 @@ void load_image(layer* cnn,unsigned char* pixels, int index, int size)
     {
         cnn[0].activation[pixel]=pixels[index*size+pixel]/255.0;
     }
+}
+double sigmoid_derivative(double x)
+{
+    double temp=exp(x);
+    return (temp/((1.0 + temp)*(1.0 + temp)));
 }
 int main()
 {
@@ -127,7 +133,6 @@ int main()
     vector* dc_da=malloc(sizeof(vector)*(num_layers)); // dc/da
     vector* dc_dw=malloc(sizeof(vector)*(num_layers)); // dc/dw
     vector* dc_db=malloc(sizeof(vector)*(num_layers)); // dc/db
-    vector* f_z_a=malloc(sizeof(vector)*num_layers); // f(Z,a)
     for(int i=0;i<num_layers;i++)
     {
         if(i==0)
@@ -169,39 +174,82 @@ int main()
         }
         dc_db[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
     }
-
+    
     int epochs=1;
     int batch_size=5;
     int image_indices[batch_size];
     srand(time(NULL));
     
-
     for(int e=0;e<epochs;e++) 
     {
-        
+        for(int i=0;i<num_layers;i++) //setting derivative vectors to 0
+        {
+            if(i==num_layers-1 || i==0)
+            {
+                continue;
+            }
+            memset(dc_da[i].parameter,0,sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
+        }
+        for(int i=0;i<num_layers;i++)
+        {
+            if(i==num_layers-1)
+            {
+                continue;
+            }
+            memset(dc_dw[i].parameter,0,sizeof(double)*cnn_summary[i]);
+        }
+        for(int i=0;i<num_layers;i++)
+        {
+            if(i==num_layers-1)
+            {
+                continue;
+            }
+            memset(dc_db[i].parameter,0,sizeof(double)*cnn_summary[i]);
+        }
+            
         fill_image_indices(batch_size,image_indices,images_num); //determine batch
         for(int image=0;image<batch_size;image++) 
         {
             load_image(cnn,pixels,image_indices[image],image_size);
 
-            for(int i=0;i<num_layers-1;i++) //processing cnn layers
+            for(int i=0;i<num_layers-1;i++) //processing cnn layers (feedforward)
             {
                 int j=i+1;
                 feed_forward(cnn[i].activation,cnn_summary[i],cnn[i].weights,cnn_summary[j],cnn[j].activation,cnn[j].biases);
                 sigmoid_func(cnn[j].activation,cnn_summary[j]);
             }
 
-            for(int layer=num_layers-1;layer>0;layer--) //computing cost and dc/da
+            
+
+            for(int layer=num_layers-1;layer>=0;layer--) //computing cost and dc/da
             {
+                if(layer==0)
+                {
+                    continue;
+                }
                 if(layer==num_layers-1)
                 {
-                    for(int param=0;param<cnn_summary[layer];param++)
+                    for(int node=0;node<cnn_summary[layer];node++)
                     {
-                        cost[layer].parameter[param]=labels[image_indices[image]]-cnn[layer].activation[param];
+                        if(node==labels[image_indices[image]])
+                        {
+                            cost[layer].parameter[node]=1-cnn[layer].activation[node];
+                        }
+                        else
+                        {
+                            cost[layer].parameter[node]=cnn[layer].activation[node];
+                        }
                     }
                     continue;
                 }
-
+                for(int m=0;m<cnn_summary[layer+1];m++) //loop for dc/da (indexing for dC((L+1),m)/da(L,n): m*x+n) , x=cnn_smmary[layer]
+                {
+                    for(int n=0;n<cnn_summary[layer];n++)
+                    {
+                        dc_da[layer].parameter[m*cnn_summary[layer]+n]=2*(cost[layer+1].parameter[m]-cnn[layer+1].activation[m])*sigmoid_derivative(cnn[layer+1].activation[m])*cnn[layer].weights[n][m];
+                    }
+                }
+                
             }
         }
 
