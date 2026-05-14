@@ -10,6 +10,10 @@ typedef struct layer
     double* biases;
     double** weights;
 }layer;
+typedef struct vector
+{
+    double* parameter;
+}vector;
 unsigned int read_big_endian_uint(FILE* fp)
 {
     unsigned char bytes[4];
@@ -39,6 +43,20 @@ void sigmoid_func(double* target_layer, int layer_size)
 double random_weight()
 {
     return (((double)rand()/RAND_MAX)-0.5)*0.1;
+}
+void fill_image_indices(int size, int* arr,int num)
+{
+    for(int i=0;i<size;i++)
+    {
+        arr[i]=abs(rand())%num;
+    }
+}
+void load_image(layer* cnn,unsigned char* pixels, int index, int size)
+{
+    for(int pixel=0;pixel<size;pixel++)
+    {
+        cnn[0].activation[pixel]=pixels[index*size+pixel]/255.0;
+    }
 }
 int main()
 {
@@ -105,6 +123,93 @@ int main()
         }
     }
 
+    vector* cost=malloc(sizeof(vector)*(num_layers));
+    vector* dc_da=malloc(sizeof(vector)*(num_layers)); // dc/da
+    vector* dc_dw=malloc(sizeof(vector)*(num_layers)); // dc/dw
+    vector* dc_db=malloc(sizeof(vector)*(num_layers)); // dc/db
+    vector* f_z_a=malloc(sizeof(vector)*num_layers); // f(Z,a)
+    for(int i=0;i<num_layers;i++)
+    {
+        if(i==0)
+        {
+            cost[i].parameter=NULL;
+            continue;
+        }
+        cost[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
+    }
+    for(int i=0;i<num_layers;i++)
+    {
+        if(i==num_layers-1)
+        {
+            dc_da[i].parameter=NULL;
+            continue;
+        }
+        if(i==0)
+        {
+            dc_da[i].parameter=NULL;
+            continue;
+        }
+        dc_da[i].parameter=malloc(sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
+    }
+    for(int i=0;i<num_layers;i++)
+    {
+        if(i==num_layers-1)
+        {
+            dc_dw[i].parameter=NULL;
+            continue;
+        }
+        dc_dw[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
+    }
+    for(int i=0;i<num_layers;i++)
+    {
+        if(i==num_layers-1)
+        {
+            dc_db[i].parameter=NULL;
+            continue;
+        }
+        dc_db[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
+    }
+
+    int epochs=1;
+    int batch_size=5;
+    int image_indices[batch_size];
+    srand(time(NULL));
+    
+
+    for(int e=0;e<epochs;e++) 
+    {
+        
+        fill_image_indices(batch_size,image_indices,images_num); //determine batch
+        for(int image=0;image<batch_size;image++) 
+        {
+            load_image(cnn,pixels,image_indices[image],image_size);
+
+            for(int i=0;i<num_layers-1;i++) //processing cnn layers
+            {
+                int j=i+1;
+                feed_forward(cnn[i].activation,cnn_summary[i],cnn[i].weights,cnn_summary[j],cnn[j].activation,cnn[j].biases);
+                sigmoid_func(cnn[j].activation,cnn_summary[j]);
+            }
+
+            for(int layer=num_layers-1;layer>0;layer--) //computing cost and dc/da
+            {
+                if(layer==num_layers-1)
+                {
+                    for(int param=0;param<cnn_summary[layer];param++)
+                    {
+                        cost[layer].parameter[param]=labels[image_indices[image]]-cnn[layer].activation[param];
+                    }
+                    continue;
+                }
+
+            }
+        }
+
+        
+
+        
+    }
+    /*
     srand(time(NULL));
 
     for(int layer=0;layer<num_layers;layer++) //setting parameters to random
@@ -167,6 +272,7 @@ int main()
         }
         
     }
+    */
 
 
     return 0;
