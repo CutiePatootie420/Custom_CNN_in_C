@@ -34,12 +34,9 @@ void feed_forward(double* activation_layer, int first_layer_num, double** weight
         target_layer[i]=temp+bias_layer[i];
     }
 }
-void sigmoid_func(double* target_layer, int layer_size)
+double sigmoid_func(double x)
 {
-    for(int i=0;i<layer_size;i++)
-    {
-        target_layer[i]=1.0/(1.0+exp(-target_layer[i]));
-    }
+    return 1.0/(1.0+exp(-x));
 }
 double random_weight()
 {
@@ -129,19 +126,31 @@ int main()
         }
     }
 
-    vector* cost=malloc(sizeof(vector)*(num_layers));
+    for(int layer=0;layer<num_layers;layer++) //setting parameters to random
+    {
+        for(int node=0;node<cnn_summary[layer];node++)
+        {
+            cnn[layer].activation[node]=random_weight();
+            cnn[layer].biases[node]=random_weight();
+        }
+        if(layer!=num_layers-1)
+        {
+            for(int node=0;node<cnn_summary[layer];node++)
+            {
+                for(int next_node=0;next_node<cnn_summary[layer+1];next_node++)
+                {
+                    cnn[layer].weights[node][next_node]=random_weight();
+                }
+            }
+        }
+    }
+
+    vector cost;
+    vector* Z=malloc(sizeof(vector)*(num_layers)); 
     vector* dc_da=malloc(sizeof(vector)*(num_layers)); // dc/da
     vector* dc_dw=malloc(sizeof(vector)*(num_layers)); // dc/dw
     vector* dc_db=malloc(sizeof(vector)*(num_layers)); // dc/db
-    for(int i=0;i<num_layers;i++)
-    {
-        if(i==0)
-        {
-            cost[i].parameter=NULL;
-            continue;
-        }
-        cost[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
-    }
+    cost.parameter=malloc(sizeof(double)*cnn_summary[num_layers-1]);
     for(int i=0;i<num_layers;i++)
     {
         if(i==num_layers-1)
@@ -173,6 +182,15 @@ int main()
             continue;
         }
         dc_db[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
+    }
+    for(int i=0;i<num_layers;i++)
+    {
+        if(i==0)
+        {
+            Z[i].parameter=NULL;
+            continue;
+        }
+        Z[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
     }
     
     int epochs=1;
@@ -215,42 +233,20 @@ int main()
             for(int i=0;i<num_layers-1;i++) //processing cnn layers (feedforward)
             {
                 int j=i+1;
-                feed_forward(cnn[i].activation,cnn_summary[i],cnn[i].weights,cnn_summary[j],cnn[j].activation,cnn[j].biases);
-                sigmoid_func(cnn[j].activation,cnn_summary[j]);
+                double temp;
+                for(int next_node=0;next_node<cnn_summary[j];next_node++)
+                {
+                    temp=0;
+                    for(int node=0;node<cnn_summary[i];node++)
+                    {
+                        temp+=cnn[i].activation[node]*cnn[i].weights[node][next_node];
+                    }
+                    temp+=cnn[j].biases[next_node];
+                    Z[j].parameter[next_node]=temp;
+                    cnn[j].activation[next_node]=sigmoid_func(temp);
+                }
             }
-
-            
-
-            for(int layer=num_layers-1;layer>=0;layer--) //computing cost and dc/da
-            {
-                if(layer==0)
-                {
-                    continue;
-                }
-                if(layer==num_layers-1)
-                {
-                    for(int node=0;node<cnn_summary[layer];node++)
-                    {
-                        if(node==labels[image_indices[image]])
-                        {
-                            cost[layer].parameter[node]=1-cnn[layer].activation[node];
-                        }
-                        else
-                        {
-                            cost[layer].parameter[node]=cnn[layer].activation[node];
-                        }
-                    }
-                    continue;
-                }
-                for(int m=0;m<cnn_summary[layer+1];m++) //loop for dc/da (indexing for dC((L+1),m)/da(L,n): m*x+n) , x=cnn_smmary[layer]
-                {
-                    for(int n=0;n<cnn_summary[layer];n++)
-                    {
-                        dc_da[layer].parameter[m*cnn_summary[layer]+n]=2*(cost[layer+1].parameter[m]-cnn[layer+1].activation[m])*sigmoid_derivative(cnn[layer+1].activation[m])*cnn[layer].weights[n][m];
-                    }
-                }
                 
-            }
         }
 
         
