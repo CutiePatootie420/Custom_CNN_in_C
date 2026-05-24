@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
 #include <math.h>
 #include <string.h>
@@ -163,7 +162,7 @@ int main()
             dc_da[i].parameter=NULL;
             continue;
         }
-        dc_da[i].parameter=malloc(sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
+        dc_da[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
     }
     for(int i=0;i<num_layers;i++)
     {
@@ -172,7 +171,7 @@ int main()
             dc_dw[i].parameter=NULL;
             continue;
         }
-        dc_dw[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
+        dc_dw[i].parameter=malloc(sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
     }
     for(int i=0;i<num_layers;i++)
     {
@@ -246,6 +245,44 @@ int main()
                     cnn[j].activation[next_node]=sigmoid_func(temp);
                 }
             }
+
+            for(int i=0;i<cnn_summary[num_layers-1];i++) //computing cost 
+            {
+                if(labels[image_indices[image]]==i)
+                {
+                    cost.parameter[i]=(cnn[num_layers-1].activation[i]-1);
+                }
+                else
+                {
+                    cost.parameter[i]=(cnn[num_layers-1].activation[i]);
+                }
+            }
+
+            int curr_layer=num_layers-1; //calculating derivative vectors 
+            for(int node=0;node<cnn_summary[curr_layer];node++) //for last layer (l3)
+            {
+                dc_da[curr_layer].parameter[node]+=2*cost.parameter[node];
+                dc_db[curr_layer].parameter[node]+=2*cost.parameter[node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l2
+                {
+                    dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node]*cnn[curr_layer-1].activation[prev_node];
+                }
+            }
+            curr_layer--;
+            for(int node=0;node<cnn_summary[curr_layer];node++) //l2
+            {
+                for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++) 
+                {
+                    dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer];
+                    dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                    for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l1
+                    {
+                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                    }
+                }
+            }
+
+            
                 
         }
 
