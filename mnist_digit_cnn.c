@@ -205,7 +205,7 @@ int main()
             {
                 continue;
             }
-            memset(dc_da[i].parameter,0,sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
+            memset(dc_da[i].parameter,0,sizeof(double)*cnn_summary[i]);
         }
         for(int i=0;i<num_layers;i++)
         {
@@ -213,7 +213,7 @@ int main()
             {
                 continue;
             }
-            memset(dc_dw[i].parameter,0,sizeof(double)*cnn_summary[i]);
+            memset(dc_dw[i].parameter,0,sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
         }
         for(int i=0;i<num_layers;i++)
         {
@@ -265,10 +265,10 @@ int main()
                 dc_db[curr_layer].parameter[node]+=2*cost.parameter[node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
                 for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l2
                 {
-                    dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node]*cnn[curr_layer-1].activation[prev_node];
+                    dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node]*cnn[curr_layer-1].activation[prev_node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
                 }
             }
-            curr_layer--;
+            curr_layer--; //2
             for(int node=0;node<cnn_summary[curr_layer];node++) //l2
             {
                 for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++) 
@@ -277,18 +277,29 @@ int main()
                     dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node]);
                     for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l1
                     {
-                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
                     }
                 }
             }
-
-            
-                
+            curr_layer--; //1
+            for(int node=0;node<cnn_summary[curr_layer];node++) //l1
+            {
+                for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++)
+                {
+                    double temp=0;
+                    for(int node_next=0;node_next<cnn_summary[curr_layer+1];node_next++)
+                    {
+                        temp+=cnn[curr_layer+1].weights[node_next][node_final_layer]*sigmoid_derivative(Z[curr_layer+1].parameter[node_next])*cnn[curr_layer].weights[node][node_next];
+                    }
+                    dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp;
+                    dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                    for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l0
+                    {
+                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                    }
+                }
+            }  
         }
-
-        
-
-        
     }
     /*
     srand(time(NULL));
