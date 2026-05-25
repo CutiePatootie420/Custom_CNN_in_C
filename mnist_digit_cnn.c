@@ -108,9 +108,15 @@ int main()
     layer* cnn=malloc(sizeof(layer)*num_layers);
     for(int layer=0;layer<num_layers;layer++)
     {
+        if(layer==0)
+        {
+            cnn[layer].biases=NULL;
+        }
+        else
+        {
+            cnn[layer].biases=malloc(sizeof(double)*cnn_summary[layer]);
+        }
         cnn[layer].activation=malloc(sizeof(double)*cnn_summary[layer]);
-        cnn[layer].biases=malloc(sizeof(double)*cnn_summary[layer]);
-        
         if(layer==num_layers-1)
         {
             cnn[layer].weights=NULL;
@@ -130,7 +136,10 @@ int main()
         for(int node=0;node<cnn_summary[layer];node++)
         {
             cnn[layer].activation[node]=random_weight();
-            cnn[layer].biases[node]=random_weight();
+            if(layer!=0)
+            {
+                cnn[layer].biases[node]=random_weight();
+            }
         }
         if(layer!=num_layers-1)
         {
@@ -152,11 +161,6 @@ int main()
     cost.parameter=malloc(sizeof(double)*cnn_summary[num_layers-1]);
     for(int i=0;i<num_layers;i++)
     {
-        if(i==num_layers-1)
-        {
-            dc_da[i].parameter=NULL;
-            continue;
-        }
         if(i==0)
         {
             dc_da[i].parameter=NULL;
@@ -175,7 +179,7 @@ int main()
     }
     for(int i=0;i<num_layers;i++)
     {
-        if(i==num_layers-1)
+        if(i==0)
         {
             dc_db[i].parameter=NULL;
             continue;
@@ -197,11 +201,13 @@ int main()
     int image_indices[batch_size];
     srand(time(NULL));
     
+    double learning_rate=0.01;
+
     for(int e=0;e<epochs;e++) 
     {
         for(int i=0;i<num_layers;i++) //setting derivative vectors to 0
         {
-            if(i==num_layers-1 || i==0)
+            if(i==0)
             {
                 continue;
             }
@@ -217,7 +223,7 @@ int main()
         }
         for(int i=0;i<num_layers;i++)
         {
-            if(i==num_layers-1)
+            if(i==0)
             {
                 continue;
             }
@@ -299,6 +305,28 @@ int main()
                     }
                 }
             }  
+        }
+        for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative
+        {
+            if(layer!=0)
+            {
+                for(int node=0;node<cnn_summary[layer];node++) //changing biases
+                {
+                    cnn[layer].biases[node]-=(learning_rate*dc_db[layer].parameter[node]/batch_size);
+                }
+            }
+            if(layer!=num_layers-1)
+            {
+                for(int node=0;node<cnn_summary[layer];node++)
+                {
+                    for(int node_next_layer=0;node_next_layer<cnn_summary[layer+1];node_next_layer++)
+                    {
+                        cnn[layer].weights[node][node_next_layer]-=(learning_rate*dc_dw[layer].parameter[node*cnn_summary[layer+1]+node_next_layer]/batch_size);
+                    }
+                }
+            }
+            
+            
         }
     }
     /*
