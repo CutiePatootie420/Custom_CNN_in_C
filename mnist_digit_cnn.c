@@ -335,7 +335,6 @@ int main()
     free(cost.parameter);
     for(int layer=0;layer<num_layers;layer++)
     {
-        free(cnn[layer].activation);
         if(cnn[layer].biases!=NULL)
         {
             free(cnn[layer].biases);
