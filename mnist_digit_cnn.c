@@ -39,7 +39,7 @@ double sigmoid_func(double x)
 }
 double random_weight()
 {
-    return (((double)rand()/RAND_MAX)-0.5)*0.1;
+    return (((double)rand()/RAND_MAX)-0.5); 
 }
 void fill_image_indices(int size, int* arr,int num)
 {
@@ -196,7 +196,7 @@ int main()
         Z[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
     }
     
-    int epochs=2;
+    int epochs=5;
     int batch_size=32;
     int image_indices[batch_size];
     
@@ -205,7 +205,7 @@ int main()
 
     for(int e=0;e<epochs;e++) 
     {
-        for(int mini_batch=0;mini_batch<images_num/epochs;mini_batch++)
+        for(int mini_batch=0;mini_batch<images_num/batch_size;mini_batch++)
         {
             for(int i=0;i<num_layers;i++) //setting derivative vectors to 0
             {
@@ -237,6 +237,7 @@ int main()
             {
                 load_image(cnn,pixels,image_indices[image],image_size);
 
+                double temp_final_layer=0;
                 for(int i=0;i<num_layers-1;i++) //processing cnn layers (feedforward)
                 {
                     int j=i+1;
@@ -250,26 +251,22 @@ int main()
                         }
                         temp+=cnn[j].biases[next_node];
                         Z[j].parameter[next_node]=temp;
-                        cnn[j].activation[next_node]=sigmoid_func(temp);
-                    }
-                }
-                
-                if(mini_batch%500==0)
-                {
-                    printf("Output layer , epoch %d, mini-batch %d, iteration %d: \n",e,mini_batch,image); //Printing final layer activations and prediction
-                    int prediction=0;
-                    for(int i=0;i<cnn_summary[num_layers-1];i++)
-                    {
-                        printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
-                        if(cnn[num_layers-1].activation[i]>cnn[num_layers-1].activation[prediction])
+                        if(j!=num_layers-1)
                         {
-                            prediction=i;
+                            cnn[j].activation[next_node]=sigmoid_func(temp);
+                        }
+                        else 
+                        {
+                            cnn[j].activation[next_node]=exp(temp);
+                            temp_final_layer+=cnn[j].activation[next_node];
                         }
                     }
-                    printf("Prediction: %d\n Actual: %d\n",prediction,labels[image_indices[image]]);
+                }
+                for(int i=0;i<cnn_summary[num_layers-1];i++)
+                {
+                    cnn[num_layers-1].activation[i]/=temp_final_layer;
                 }
                 
-
                 for(int i=0;i<cnn_summary[num_layers-1];i++) //computing cost 
                 {
                     if(labels[image_indices[image]]==i)
@@ -285,11 +282,11 @@ int main()
                 int curr_layer=num_layers-1; //calculating derivative vectors 
                 for(int node=0;node<cnn_summary[curr_layer];node++) //for last layer (l3)
                 {
-                    dc_da[curr_layer].parameter[node]+=2*cost.parameter[node];
-                    dc_db[curr_layer].parameter[node]+=2*cost.parameter[node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                    //dc_da[curr_layer].parameter[node]+=cost.parameter[node]/(cnn[curr_layer].activation[node]*(1-cnn[curr_layer].activation[node]));
+                    dc_db[curr_layer].parameter[node]+=cost.parameter[node];
                     for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l2
                     {
-                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node]*cnn[curr_layer-1].activation[prev_node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=cost.parameter[node]*cnn[curr_layer-1].activation[prev_node];
                     }
                 }
                 curr_layer--; //2
@@ -297,11 +294,11 @@ int main()
                 {
                     for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++) 
                     {
-                        dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer];
-                        dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                        dc_da[curr_layer].parameter[node]+=cost.parameter[node_final_layer]*cnn[curr_layer].weights[node][node_final_layer];
+                        dc_db[curr_layer].parameter[node]+=cost.parameter[node_final_layer]*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node]);
                         for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l1
                         {
-                            dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                            dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=cost.parameter[node_final_layer]*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
                         }
                     }
                 }
@@ -315,14 +312,28 @@ int main()
                         {
                             temp+=cnn[curr_layer+1].weights[node_next][node_final_layer]*sigmoid_derivative(Z[curr_layer+1].parameter[node_next])*cnn[curr_layer].weights[node][node_next];
                         }
-                        dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp;
-                        dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                        dc_da[curr_layer].parameter[node]+=cost.parameter[node_final_layer]*temp;
+                        dc_db[curr_layer].parameter[node]+=cost.parameter[node_final_layer]*temp*sigmoid_derivative(Z[curr_layer].parameter[node]);
                         for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l0
                         {
-                            dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                            dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=cost.parameter[node_final_layer]*temp*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
                         }
                     }
-                }  
+                } 
+                if(mini_batch%500==0 && image==31)
+                {
+                    printf("Output layer , epoch %d, mini-batch %d, iteration %d: \n",e,mini_batch,image); //Printing final layer activations and prediction
+                    int prediction=0;
+                    for(int i=0;i<cnn_summary[num_layers-1];i++)
+                    {
+                        printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
+                        if(cnn[num_layers-1].activation[i]>cnn[num_layers-1].activation[prediction])
+                        {
+                            prediction=i;
+                        }
+                    }
+                    printf("Prediction: %d\n Actual: %d\n",prediction,labels[image_indices[image]]);
+                } 
             }
             for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative/batch_size
             {
@@ -342,9 +353,7 @@ int main()
                             cnn[layer].weights[node][node_next_layer]-=(learning_rate*dc_dw[layer].parameter[node*cnn_summary[layer+1]+node_next_layer]/batch_size);
                         }
                     }
-                }
-                
-                
+                }                
             }
         }
     }
@@ -397,3 +406,17 @@ int main()
     free(dc_db);
     return 0;
 }
+/*if(mini_batch%500==0)
+                {
+                    printf("Output layer , epoch %d, mini-batch %d, iteration %d: \n",e,mini_batch,image); //Printing final layer activations and prediction
+                    int prediction=0;
+                    for(int i=0;i<cnn_summary[num_layers-1];i++)
+                    {
+                        printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
+                        if(cnn[num_layers-1].activation[i]>cnn[num_layers-1].activation[prediction])
+                        {
+                            prediction=i;
+                        }
+                    }
+                    printf("Prediction: %d\n Actual: %d\n",prediction,labels[image_indices[image]]);
+                }*/
