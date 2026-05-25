@@ -306,7 +306,7 @@ int main()
                 }
             }  
         }
-        for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative
+        for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative/batch_size
         {
             if(layer!=0)
             {
@@ -329,71 +329,53 @@ int main()
             
         }
     }
-    /*
-    srand(time(NULL));
 
-    for(int layer=0;layer<num_layers;layer++) //setting parameters to random
+    free(pixels);
+    free(labels);
+    free(cost.parameter);
+    for(int layer=0;layer<num_layers;layer++)
     {
-        for(int node=0;node<cnn_summary[layer];node++)
+        free(cnn[layer].activation);
+        if(cnn[layer].biases!=NULL)
         {
-            cnn[layer].activation[node]=random_weight();
-            cnn[layer].biases[node]=random_weight();
+            free(cnn[layer].biases);
         }
-        if(layer!=num_layers-1)
+        if(cnn[layer].activation!=NULL)
         {
-            for(int node=0;node<cnn_summary[layer];node++)
+            free(cnn[layer].activation);
+        }
+        if(cnn[layer].weights!=NULL)
+        {
+            for(int i=0;i<cnn_summary[layer];i++)
             {
-                for(int next_node=0;next_node<cnn_summary[layer+1];next_node++)
-                {
-                    cnn[layer].weights[node][next_node]=random_weight();
-                }
+                free(cnn[layer].weights[i]);
             }
+            free(cnn[layer].weights);
         }
     }
-
-    int iterations=5;
-    int image_index;
-
-    double* cost=malloc(sizeof(double)*cnn_summary[num_layers-1]);
-    double final_cost;
-
-    for(int iter=0;iter<iterations;iter++) //selecting random images
+    free(cnn);
+    for(int i=0; i<num_layers; i++)
     {
-        image_index=abs(rand())%images_num;
-        for(int pixel=0;pixel<image_size;pixel++) //loading image into cnn input layer
+        if(Z[i].parameter != NULL)
         {
-            cnn[0].activation[pixel]=pixels[image_index*image_size+pixel]/255.0;
+            free(Z[i].parameter);
         }
-        
-        for(int i=0;i<num_layers-1;i++) //processing cnn layers
+        if(dc_da[i].parameter != NULL)
         {
-            int j=i+1;
-            feed_forward(cnn[i].activation,cnn_summary[i],cnn[i].weights,cnn_summary[j],cnn[j].activation,cnn[j].biases);
-            sigmoid_func(cnn[j].activation,cnn_summary[j]);
+            free(dc_da[i].parameter);
         }
-
-        for(int i=0;i<cnn_summary[num_layers-1];i++)
+        if(dc_dw[i].parameter != NULL)
         {
-            printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
+            free(dc_dw[i].parameter);
         }
-
-        final_cost=0; 
-        for(int i=0;i<cnn_summary[num_layers-1];i++) //cost 
+        if(dc_db[i].parameter != NULL)
         {
-            if(labels[image_index]==i)
-            {
-                cost[i]=(1-cnn[num_layers-1].activation[i])*(1-cnn[num_layers-1].activation[i]);
-            }
-            else
-            {
-                cost[i]=(cnn[num_layers-1].activation[i])*cnn[num_layers-1].activation[i];
-            }
-            final_cost+=cost[i];
+            free(dc_db[i].parameter);
         }
-        
     }
-    */
-
-
+    free(Z);
+    free(dc_da);
+    free(dc_dw);
+    free(dc_db);
     return 0;
 }
