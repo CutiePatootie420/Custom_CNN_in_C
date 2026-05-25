@@ -62,6 +62,7 @@ double sigmoid_derivative(double x)
 }
 int main()
 {
+    srand(time(NULL));
     FILE* train_images_file=fopen("mnist/train-images-idx3-ubyte","rb"); //image file
     if(train_images_file==NULL)
     {
@@ -83,7 +84,6 @@ int main()
     unsigned int label_magic_num,label_num;
     label_magic_num=read_big_endian_uint(label_images_file);
     label_num=read_big_endian_uint(label_images_file);
-
 
     unsigned int image_size=(size_t)rows*cols;
 
@@ -196,137 +196,156 @@ int main()
         Z[i].parameter=malloc(sizeof(double)*cnn_summary[i]);
     }
     
-    int epochs=1;
-    int batch_size=5;
+    int epochs=2;
+    int batch_size=32;
     int image_indices[batch_size];
-    srand(time(NULL));
+    
     
     double learning_rate=0.01;
 
     for(int e=0;e<epochs;e++) 
     {
-        for(int i=0;i<num_layers;i++) //setting derivative vectors to 0
+        for(int mini_batch=0;mini_batch<images_num/epochs;mini_batch++)
         {
-            if(i==0)
+            for(int i=0;i<num_layers;i++) //setting derivative vectors to 0
             {
-                continue;
+                if(i==0)
+                {
+                    continue;
+                }
+                memset(dc_da[i].parameter,0,sizeof(double)*cnn_summary[i]);
             }
-            memset(dc_da[i].parameter,0,sizeof(double)*cnn_summary[i]);
-        }
-        for(int i=0;i<num_layers;i++)
-        {
-            if(i==num_layers-1)
+            for(int i=0;i<num_layers;i++)
             {
-                continue;
+                if(i==num_layers-1)
+                {
+                    continue;
+                }
+                memset(dc_dw[i].parameter,0,sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
             }
-            memset(dc_dw[i].parameter,0,sizeof(double)*cnn_summary[i]*cnn_summary[i+1]);
-        }
-        for(int i=0;i<num_layers;i++)
-        {
-            if(i==0)
+            for(int i=0;i<num_layers;i++)
             {
-                continue;
+                if(i==0)
+                {
+                    continue;
+                }
+                memset(dc_db[i].parameter,0,sizeof(double)*cnn_summary[i]);
             }
-            memset(dc_db[i].parameter,0,sizeof(double)*cnn_summary[i]);
-        }
-            
-        fill_image_indices(batch_size,image_indices,images_num); //determine batch
-        for(int image=0;image<batch_size;image++) 
-        {
-            load_image(cnn,pixels,image_indices[image],image_size);
+                
+            fill_image_indices(batch_size,image_indices,images_num); //determine batch
+            for(int image=0;image<batch_size;image++) 
+            {
+                load_image(cnn,pixels,image_indices[image],image_size);
 
-            for(int i=0;i<num_layers-1;i++) //processing cnn layers (feedforward)
-            {
-                int j=i+1;
-                double temp;
-                for(int next_node=0;next_node<cnn_summary[j];next_node++)
+                for(int i=0;i<num_layers-1;i++) //processing cnn layers (feedforward)
                 {
-                    temp=0;
-                    for(int node=0;node<cnn_summary[i];node++)
+                    int j=i+1;
+                    double temp;
+                    for(int next_node=0;next_node<cnn_summary[j];next_node++)
                     {
-                        temp+=cnn[i].activation[node]*cnn[i].weights[node][next_node];
+                        temp=0;
+                        for(int node=0;node<cnn_summary[i];node++)
+                        {
+                            temp+=cnn[i].activation[node]*cnn[i].weights[node][next_node];
+                        }
+                        temp+=cnn[j].biases[next_node];
+                        Z[j].parameter[next_node]=temp;
+                        cnn[j].activation[next_node]=sigmoid_func(temp);
                     }
-                    temp+=cnn[j].biases[next_node];
-                    Z[j].parameter[next_node]=temp;
-                    cnn[j].activation[next_node]=sigmoid_func(temp);
                 }
-            }
+                
+                if(mini_batch%500==0)
+                {
+                    printf("Output layer , epoch %d, mini-batch %d, iteration %d: \n",e,mini_batch,image); //Printing final layer activations and prediction
+                    int prediction=0;
+                    for(int i=0;i<cnn_summary[num_layers-1];i++)
+                    {
+                        printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
+                        if(cnn[num_layers-1].activation[i]>cnn[num_layers-1].activation[prediction])
+                        {
+                            prediction=i;
+                        }
+                    }
+                    printf("Prediction: %d\n Actual: %d\n",prediction,labels[image_indices[image]]);
+                }
+                
 
-            for(int i=0;i<cnn_summary[num_layers-1];i++) //computing cost 
-            {
-                if(labels[image_indices[image]]==i)
+                for(int i=0;i<cnn_summary[num_layers-1];i++) //computing cost 
                 {
-                    cost.parameter[i]=(cnn[num_layers-1].activation[i]-1);
+                    if(labels[image_indices[image]]==i)
+                    {
+                        cost.parameter[i]=(cnn[num_layers-1].activation[i]-1);
+                    }
+                    else
+                    {
+                        cost.parameter[i]=(cnn[num_layers-1].activation[i]);
+                    }
                 }
-                else
-                {
-                    cost.parameter[i]=(cnn[num_layers-1].activation[i]);
-                }
-            }
 
-            int curr_layer=num_layers-1; //calculating derivative vectors 
-            for(int node=0;node<cnn_summary[curr_layer];node++) //for last layer (l3)
-            {
-                dc_da[curr_layer].parameter[node]+=2*cost.parameter[node];
-                dc_db[curr_layer].parameter[node]+=2*cost.parameter[node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
-                for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l2
+                int curr_layer=num_layers-1; //calculating derivative vectors 
+                for(int node=0;node<cnn_summary[curr_layer];node++) //for last layer (l3)
                 {
-                    dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node]*cnn[curr_layer-1].activation[prev_node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
-                }
-            }
-            curr_layer--; //2
-            for(int node=0;node<cnn_summary[curr_layer];node++) //l2
-            {
-                for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++) 
-                {
-                    dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer];
-                    dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node]);
-                    for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l1
+                    dc_da[curr_layer].parameter[node]+=2*cost.parameter[node];
+                    dc_db[curr_layer].parameter[node]+=2*cost.parameter[node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                    for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l2
                     {
-                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[num_layers-1]+node]+=2*cost.parameter[node]*cnn[curr_layer-1].activation[prev_node]*sigmoid_derivative(Z[curr_layer].parameter[node]);
                     }
                 }
-            }
-            curr_layer--; //1
-            for(int node=0;node<cnn_summary[curr_layer];node++) //l1
-            {
-                for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++)
+                curr_layer--; //2
+                for(int node=0;node<cnn_summary[curr_layer];node++) //l2
                 {
-                    double temp=0;
-                    for(int node_next=0;node_next<cnn_summary[curr_layer+1];node_next++)
+                    for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++) 
                     {
-                        temp+=cnn[curr_layer+1].weights[node_next][node_final_layer]*sigmoid_derivative(Z[curr_layer+1].parameter[node_next])*cnn[curr_layer].weights[node][node_next];
-                    }
-                    dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp;
-                    dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node]);
-                    for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l0
-                    {
-                        dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                        dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer];
+                        dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                        for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l1
+                        {
+                            dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*cnn[curr_layer].weights[node][node_final_layer]*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                        }
                     }
                 }
-            }  
-        }
-        for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative/batch_size
-        {
-            if(layer!=0)
-            {
-                for(int node=0;node<cnn_summary[layer];node++) //changing biases
+                curr_layer--; //1
+                for(int node=0;node<cnn_summary[curr_layer];node++) //l1
                 {
-                    cnn[layer].biases[node]-=(learning_rate*dc_db[layer].parameter[node]/batch_size);
-                }
-            }
-            if(layer!=num_layers-1)
-            {
-                for(int node=0;node<cnn_summary[layer];node++)
-                {
-                    for(int node_next_layer=0;node_next_layer<cnn_summary[layer+1];node_next_layer++)
+                    for(int node_final_layer=0;node_final_layer<cnn_summary[num_layers-1];node_final_layer++)
                     {
-                        cnn[layer].weights[node][node_next_layer]-=(learning_rate*dc_dw[layer].parameter[node*cnn_summary[layer+1]+node_next_layer]/batch_size);
+                        double temp=0;
+                        for(int node_next=0;node_next<cnn_summary[curr_layer+1];node_next++)
+                        {
+                            temp+=cnn[curr_layer+1].weights[node_next][node_final_layer]*sigmoid_derivative(Z[curr_layer+1].parameter[node_next])*cnn[curr_layer].weights[node][node_next];
+                        }
+                        dc_da[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp;
+                        dc_db[curr_layer].parameter[node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node]);
+                        for(int prev_node=0;prev_node<cnn_summary[curr_layer-1];prev_node++) //calculating dc/dw for l0
+                        {
+                            dc_dw[curr_layer-1].parameter[prev_node*cnn_summary[curr_layer]+node]+=2*cost.parameter[node_final_layer]*sigmoid_derivative(Z[num_layers-1].parameter[node_final_layer])*temp*sigmoid_derivative(Z[curr_layer].parameter[node])*cnn[curr_layer-1].activation[prev_node];
+                        }
+                    }
+                }  
+            }
+            for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative/batch_size
+            {
+                if(layer!=0)
+                {
+                    for(int node=0;node<cnn_summary[layer];node++) //changing biases
+                    {
+                        cnn[layer].biases[node]-=(learning_rate*dc_db[layer].parameter[node]/batch_size);
                     }
                 }
+                if(layer!=num_layers-1)
+                {
+                    for(int node=0;node<cnn_summary[layer];node++)
+                    {
+                        for(int node_next_layer=0;node_next_layer<cnn_summary[layer+1];node_next_layer++)
+                        {
+                            cnn[layer].weights[node][node_next_layer]-=(learning_rate*dc_dw[layer].parameter[node*cnn_summary[layer+1]+node_next_layer]/batch_size);
+                        }
+                    }
+                }
+                
+                
             }
-            
-            
         }
     }
 
