@@ -201,9 +201,9 @@ int main()
     int image_indices[batch_size];
     
     
-    double learning_rate=0.01;
+    double learning_rate=0.1;
 
-    for(int e=0;e<epochs;e++) 
+    for(int e=0;e<epochs;e++) //training 
     {
         for(int mini_batch=0;mini_batch<images_num/batch_size;mini_batch++)
         {
@@ -320,7 +320,7 @@ int main()
                         }
                     }
                 } 
-                if(mini_batch%500==0 && image==31)
+                /*if(mini_batch%500==0 && image==31)
                 {
                     printf("Output layer , epoch %d, mini-batch %d, iteration %d: \n",e,mini_batch,image); //Printing final layer activations and prediction
                     int prediction=0;
@@ -333,7 +333,7 @@ int main()
                         }
                     }
                     printf("Prediction: %d\n Actual: %d\n",prediction,labels[image_indices[image]]);
-                } 
+                }*/ 
             }
             for(int layer=0;layer<num_layers;layer++) //X=x-learning_rate*derivative/batch_size
             {
@@ -358,6 +358,93 @@ int main()
         }
     }
 
+    FILE* test_images_file=fopen("mnist/t10k-images-idx3-ubyte","rb"); //test images file
+    if(test_images_file==NULL)
+    {
+        printf("Test file not found");
+        return 1;
+    }
+    unsigned int test_magic_num,test_images_num,test_rows,test_cols;
+    test_magic_num=read_big_endian_uint(test_images_file);
+    test_images_num=read_big_endian_uint(test_images_file);
+    test_rows=read_big_endian_uint(test_images_file);
+    test_cols=read_big_endian_uint(test_images_file);
+    unsigned char *test_pixels=malloc(sizeof(unsigned char)*test_rows*test_cols*test_images_num); //reading pixel values of test dataset into test_pixels var
+    fread(test_pixels, sizeof(unsigned char), test_images_num * test_rows * test_cols, test_images_file);
+
+    FILE* test_labels_file=fopen("mnist/t10k-labels-idx1-ubyte","rb"); //test labels file
+    if(test_labels_file==NULL)
+    {
+        printf("Test labels file not found");
+        return 1;
+    }
+    unsigned int test_labels_magic_num,test_labels_num;
+    test_labels_magic_num=read_big_endian_uint(test_labels_file);
+    test_labels_num=read_big_endian_uint(test_labels_file);
+    unsigned char* test_labels=malloc(sizeof(unsigned char)*test_labels_num); //reading label values of test dataset into test_labels var
+    fread(test_labels, sizeof(unsigned char), test_labels_num, test_labels_file);
+    double accuracy=0;
+
+    for(int index=0;index<test_images_num;index++) //testing
+    {
+        load_image(cnn,test_pixels,index, image_size);
+
+        double temp_final_layer=0;
+        for(int i=0;i<num_layers-1;i++)
+        {
+            int j=i+1;
+            double temp;
+            for(int next_node=0;next_node<cnn_summary[j];next_node++)
+            {
+                temp=0;
+                for(int node=0;node<cnn_summary[i];node++)
+                {
+                    temp+=cnn[i].activation[node]*cnn[i].weights[node][next_node];
+                }
+                temp+=cnn[j].biases[next_node];
+                Z[j].parameter[next_node]=temp;
+                if(j!=num_layers-1)
+                {
+                    cnn[j].activation[next_node]=sigmoid_func(temp);
+                }
+                else 
+                {
+                    cnn[j].activation[next_node]=exp(temp);
+                    temp_final_layer+=cnn[j].activation[next_node];
+                }
+            }
+        }
+        for(int i=0;i<cnn_summary[num_layers-1];i++)
+        {
+            cnn[num_layers-1].activation[i]/=temp_final_layer;
+        }
+
+        int prediction=0;
+        for(int i=0;i<cnn_summary[num_layers-1];i++)
+        {
+            if(cnn[num_layers-1].activation[i]>cnn[num_layers-1].activation[prediction])
+            {
+                prediction=i;
+            }
+        }
+        if(prediction==test_labels[index])
+        {
+            accuracy++;
+        }
+        if(index%100==0)
+        {
+            printf("Prediction: %d, actual: %d\n",prediction,test_labels[index]);
+        }
+        
+    }
+    accuracy/=test_images_num;
+    printf("Accuracy over %d epochs, %d batch size on learning rate %.2f:   %f\n",epochs,batch_size,learning_rate,accuracy);
+
+
+    free(test_pixels);
+    free(test_labels);
+    fclose(test_images_file);
+    fclose(test_labels_file);
     free(pixels);
     free(labels);
     free(cost.parameter);
@@ -406,17 +493,3 @@ int main()
     free(dc_db);
     return 0;
 }
-/*if(mini_batch%500==0)
-                {
-                    printf("Output layer , epoch %d, mini-batch %d, iteration %d: \n",e,mini_batch,image); //Printing final layer activations and prediction
-                    int prediction=0;
-                    for(int i=0;i<cnn_summary[num_layers-1];i++)
-                    {
-                        printf("%d: %f\n",i,cnn[num_layers-1].activation[i]);
-                        if(cnn[num_layers-1].activation[i]>cnn[num_layers-1].activation[prediction])
-                        {
-                            prediction=i;
-                        }
-                    }
-                    printf("Prediction: %d\n Actual: %d\n",prediction,labels[image_indices[image]]);
-                }*/
