@@ -443,6 +443,8 @@ int main()
 
     free(test_pixels);
     free(test_labels);
+    fclose(train_images_file);
+    fclose(label_images_file);
     fclose(test_images_file);
     fclose(test_labels_file);
     free(pixels);
