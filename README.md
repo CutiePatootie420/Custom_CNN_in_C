@@ -1,5 +1,5 @@
 ![CNN Illustration](./images/cnn%20illustration.png)
-# MNIST digit classifier from scratch in raw C
+# MNIST digit classifier from scratch in C
 
 A lightweight, high-performance 4-layer Multilayer Perceptron (MLP) written entirely from scratch in single-threaded C. This engine contains **zero external machine learning libraries or frameworks**—only standard C headers (`stdlib.h`, `math.h`, `stdio.h`, etc.) are used. 
 
