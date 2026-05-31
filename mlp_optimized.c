@@ -204,9 +204,10 @@ int main()
     }
     mlp* network=create_mlp(mlp_info,num_layers);
     initialise_network(network);
-    
+
 
     deallocate_network(network);
+    
     return 0;
 
 }
