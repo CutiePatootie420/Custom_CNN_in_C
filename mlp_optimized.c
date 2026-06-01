@@ -3,6 +3,15 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <pthread.h>
+#if defined(_WIN32)
+    #include <windows.h>
+#elif defined(__APPLE__)
+    #include <sys/param.h>
+    #include <sys/sysctl.h>
+#elif defined(_linux_) || defined(__unix__)
+    #include <unistd.h>
+#endif
 typedef struct layer
 {
     int size;
@@ -96,7 +105,7 @@ void deallocate_network(mlp* temp)
     free(temp->layers);
     free(temp);
 }
-double random_weight()
+static inline double random_weight()
 {
     return (((double)rand()/RAND_MAX)-0.5); 
 }
@@ -120,6 +129,31 @@ void initialise_network(mlp* temp)
             }
         }
     }
+}
+int get_cores()
+{
+    #if defined(_WIN32)
+        SYSTEM_INFO sysinfo;
+        GetSystemInfo(&sysinfo)
+        return (int)sysinfo.dwNumberOfProcessors;
+    #elif defined(__APPLE__)
+        int nm[2];
+        int count=0;
+        size_t len=sizeof(count);
+        nm[0]=HW_NCPU;
+        nm[1]=HW_AVAILCPU;
+        sysctl(nm,2, &count, &len,NULL, 0);
+        if(count<1)
+        {
+            nm[1]=HW_NCPU;
+            sysctl(nm,2,&count,&len, NULL,0);
+        }
+        return count>0?count:1;
+    #elif defined(_SC_NPROCESSORS_ONLN)
+        return (int)sysconf(_SC_NPROCESSORS_ONLN);
+    #else
+        return 1;
+    #endif
 }
 int main()
 {
@@ -207,7 +241,7 @@ int main()
 
 
     deallocate_network(network);
-    
+
     return 0;
 
 }
