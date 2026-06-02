@@ -15,19 +15,30 @@
 typedef struct layer
 {
     int size;
-    double* activation;
     double* biases;
-    double* z;
     double* weights;
-    double* dc_da;
-    double* dc_db;
-    double* dc_dw;
 }layer;
 typedef struct mlp
 {
     int size;
     struct layer* layers;
 }mlp;
+typedef struct buffer
+{
+    double* activation;
+    double* z;
+    double* dc_da;
+    double* dc_db;
+    double* dc_dw;
+}buffer;
+typedef struct com_data
+{
+    mlp* nwk;
+    buffer* state;
+    unsigned char* images;
+    unsigned char* labels;
+    int images_per_t;
+}com_data;
 unsigned int read_big_endian_uint(FILE* fp)
 {
     unsigned char bytes[4];
@@ -41,33 +52,18 @@ mlp* create_mlp(int* arr, int num)
     temp->size=num;
 
     temp->layers[0].size=arr[0]; //l0
-    temp->layers[0].activation=malloc(sizeof(double)*arr[0]);
     temp->layers[0].biases=NULL;
-    temp->layers[0].z=NULL;
-    temp->layers[0].dc_da=NULL;
-    temp->layers[0].dc_db=NULL;
     temp->layers[0].weights=malloc(sizeof(double)*arr[0]*arr[1]);
-    temp->layers[0].dc_dw=malloc(sizeof(double)*arr[0]*arr[1]);
 
     temp->layers[num-1].size=arr[num-1]; //l[output]
-    temp->layers[num-1].activation=malloc(sizeof(double)*arr[num-1]);
     temp->layers[num-1].biases=malloc(sizeof(double)*arr[num-1]);
     temp->layers[num-1].weights=NULL;
-    temp->layers[num-1].z=malloc(sizeof(double)*arr[num-1]);
-    temp->layers[num-1].dc_da=malloc(sizeof(double)*arr[num-1]);
-    temp->layers[num-1].dc_db=malloc(sizeof(double)*arr[num-1]);
-    temp->layers[num-1].dc_dw=NULL;
 
     for(int layer=1;layer<temp->size-1;layer++) //hidden layers
     {
         temp->layers[layer].size=arr[layer];
-        temp->layers[layer].activation=malloc(sizeof(double)*arr[layer]);
         temp->layers[layer].biases=malloc(sizeof(double)*arr[layer]);
-        temp->layers[layer].z=malloc(sizeof(double)*arr[layer]);
         temp->layers[layer].weights=malloc(sizeof(double)*arr[layer]*arr[layer+1]);
-        temp->layers[layer].dc_da=malloc(sizeof(double)*arr[layer]);
-        temp->layers[layer].dc_db=malloc(sizeof(double)*arr[layer]);
-        temp->layers[layer].dc_dw=malloc(sizeof(double)*arr[layer]*arr[layer+1]);
     }
 
     return temp;
@@ -76,7 +72,6 @@ void deallocate_network(mlp* temp)
 {   
     for(int layer=0;layer<temp->size;layer++)
     {
-        free(temp->layers[layer].activation);
         if(temp->layers[layer].biases!=NULL)
         {
             free(temp->layers[layer].biases);
@@ -84,22 +79,6 @@ void deallocate_network(mlp* temp)
         if(temp->layers[layer].weights!=NULL)
         {
             free(temp->layers[layer].weights);
-        }
-        if(temp->layers[layer].z!=NULL)
-        {
-            free(temp->layers[layer].z);
-        }
-        if(temp->layers[layer].dc_da!=NULL)
-        {
-            free(temp->layers[layer].dc_da);
-        }
-        if(temp->layers[layer].dc_db!=NULL)
-        {
-            free(temp->layers[layer].dc_db);
-        }
-        if(temp->layers[layer].dc_dw!=NULL)
-        {
-            free(temp->layers[layer].dc_dw);
         }
     }
     free(temp->layers);
@@ -115,7 +94,6 @@ void initialise_network(mlp* temp)
     {
         for(int node=0;node<temp->layers[layer].size;node++)
         {
-            temp->layers[layer].activation[node]=random_weight();
             if(temp->layers[layer].biases!=NULL)
             {
                 temp->layers[layer].biases[node]=random_weight();
@@ -134,7 +112,7 @@ int get_cores()
 {
     #if defined(_WIN32)
         SYSTEM_INFO sysinfo;
-        GetSystemInfo(&sysinfo)
+        GetSystemInfo(&sysinfo);
         return (int)sysinfo.dwNumberOfProcessors;
     #elif defined(__APPLE__)
         int nm[2];
@@ -152,8 +130,45 @@ int get_cores()
     #elif defined(_SC_NPROCESSORS_ONLN)
         return (int)sysconf(_SC_NPROCESSORS_ONLN);
     #else
+        printf("OS not identified\n");
         return 1;
     #endif
+}
+buffer* initialise_buffer(int threads,int layers, int* temp)
+{
+    buffer* arr=malloc(sizeof(buffer)*threads);
+    int a,z,da,db,dw;
+    a=0;
+    z=0;
+    da=0;
+    db=0;
+    dw=0;
+    for(int i=0;i<layers;i++)
+    {
+        a+=temp[i];
+        z+=temp[i];
+        da+=temp[i];
+        db+=temp[i];
+        if(i!=layers-1)
+        {
+            dw+=temp[i]*temp[i+1];
+        }
+    }
+    for(int i=0;i<threads;i++)
+    {
+        arr[i].activation=malloc(sizeof(double)*a);
+        arr[i].dc_da=malloc(sizeof(double)*da);
+        arr[i].dc_db=malloc(sizeof(double)*db);
+        arr[i].dc_dw=malloc(sizeof(double)*dw);
+        arr[i].z=malloc(sizeof(double)*z);
+    }
+    return arr;
+}
+void* feedforward_backprop(void* arg)
+{
+    com_data* temp=(com_data*)arg;
+    
+
 }
 int main()
 {
@@ -239,6 +254,51 @@ int main()
     mlp* network=create_mlp(mlp_info,num_layers);
     initialise_network(network);
 
+    double learning_rate;
+    int batch_size, epochs;
+    printf("Enter desired learning rate: ");
+    scanf("%lf",&learning_rate);
+    printf("Enter desired bacth size (preferred like 2,4,16,32...): ");
+    scanf("%d",&batch_size);
+    printf("Enter desired epochs: ");
+    scanf("%d",&epochs);
+    int avl_cores=get_cores();
+    int num_threads_ideal=(avl_cores>batch_size?batch_size:avl_cores);
+
+    buffer* arr_buffer=initialise_buffer(num_threads_ideal,num_layers,mlp_info);
+    int prefix_sums[num_layers];
+    prefix_sums[0]=mlp_info[0];
+    for(int i=1;i<num_layers;i++)
+    {
+        prefix_sums[i]=mlp_info[i]+prefix_sums[i-1];
+    }
+    com_data* t_package=malloc(sizeof(com_data)*num_threads_ideal);
+    for(int i=0;i<num_threads_ideal;i++)
+    {
+        t_package[i].images=pixels;
+        t_package[i].labels=labels;
+        t_package[i].nwk=network;
+        t_package[i].state=&arr_buffer[i];
+        t_package[i].images_per_t=num_threads_ideal;
+    }
+    pthread_t threads[num_threads_ideal];
+
+    int img_indices[images_num];
+    for(int i=0;i<images_num;i++)
+    {
+        img_indices[i]=i;
+    }
+    for(int e=0;e<epochs;e++)
+    {
+        int batches=images_num/batch_size;
+        for(int batch=0;batch<batches;batch++)
+        {
+            for(int t=0;t<num_threads_ideal;t++)
+            {
+                pthread_create(&threads[t],NULL,feedforward_backprop,&t_package[t]);
+            }
+        }
+    }
 
     deallocate_network(network);
 
