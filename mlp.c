@@ -46,3 +46,13 @@ void initialise_network(mlp* temp)
         temp->weights[i]=random_weight();
     }
 }
+void clear_network(mlp* temp)
+{
+    free(temp->biases);
+    free(temp->weights);
+    free(temp->p_sums);
+    free(temp->summary);
+    free(temp->w_indices);
+    free(temp);
+    return;
+}

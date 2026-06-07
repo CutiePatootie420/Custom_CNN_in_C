@@ -65,7 +65,10 @@ int main()
         printf("Read unsuccessfull\n");
         return 1;
     }
-
+    fclose(test_images_file.file);
+    fclose(train_images_file.file);
+    fclose(train_labels_file.file);
+    fclose(test_labels_file.file);
 
     printf("Enter the number of hidden layers you want in your MLP for MNIST dataset: ");
     int num_layers; // input and output layers
@@ -147,7 +150,6 @@ int main()
     double elapsed_time=(end_time.tv_sec-start_time.tv_sec)+(end_time.tv_nsec-start_time.tv_nsec)/1e9;
     printf("Training Time (New Parallelized): %f seconds\n",elapsed_time);
     printf("Training finished\n");
-    clear_state_arr(buffer_arr, num_threads_ideal);
     printf("Evaluating on test set...\n");
     state* eval=initialise_state_arr(1, network, test_images_pixels, test_labels, test_images_file.images_num,1);
     mlp* eval_net=eval->owner;
@@ -192,5 +194,13 @@ int main()
     }
     accuracy/=test_images_file.images_num;
     printf("%f accuracy on %d epochs, %d batch size, %f learning rate\n",accuracy*100,epochs,batch_size,learning_rate);
+    free(train_images_pixels);
+    free(train_labels);
+    free(test_images_pixels);
+    free(test_labels);
+    clear_network(network);
+    clear_state_arr(buffer_arr, num_threads_ideal);
+    clear_state_arr(eval, 1);
+    return 0;
     
 }

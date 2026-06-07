@@ -5,7 +5,8 @@
 #define IMAGE_SIZE 784
 state* initialise_state_arr(int threads, mlp* network,unsigned char* images, unsigned char* labels,int total_img,int img)
 {
-    state* temp=malloc(sizeof(state)*threads);
+    state* temp=calloc(threads, sizeof(state));
+    if(!temp) return NULL;
     for(int i=0;i<threads;i++)
     {
         temp[i].owner=network;
@@ -14,6 +15,13 @@ state* initialise_state_arr(int threads, mlp* network,unsigned char* images, uns
         temp[i].dL_db=malloc(sizeof(double)*(network->total_biases+IMAGE_SIZE)); //first 784 elements of this arr are redundant but we add to maintain similarity of array access
         temp[i].z=malloc(sizeof(double)*(network->total_biases+IMAGE_SIZE)); //first 784 elements of this arr are redundant but we add to maintain similarity of array access
         temp[i].dL_dw=malloc(sizeof(double)*network->total_weights);
+        
+        if(!temp[i].activation || !temp[i].dL_dz || !temp[i].dL_db || !temp[i].z || !temp[i].dL_dw)
+        {
+            clear_state_arr(temp, threads);
+            return NULL;
+        }
+        
         temp[i].total_images=total_img;
         temp[i].img_per_state=img;
         temp[i].images=images;
@@ -23,6 +31,7 @@ state* initialise_state_arr(int threads, mlp* network,unsigned char* images, uns
 }
 void clear_state_arr(state* arr, int num)
 {
+    if(!arr) return;
     for(int i=0;i<num;i++)
     {
         free(arr[i].activation);
