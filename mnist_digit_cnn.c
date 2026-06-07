@@ -4,6 +4,7 @@
 #include <time.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
 typedef struct layer
 {
     double* activation;
@@ -203,6 +204,9 @@ int main()
     
     double learning_rate=0.1;
 
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
     for(int e=0;e<epochs;e++) //training 
     {
         for(int mini_batch=0;mini_batch<images_num/batch_size;mini_batch++)
@@ -357,6 +361,10 @@ int main()
             }
         }
     }
+
+    clock_gettime(CLOCK_MONOTONIC,&end_time);
+    double elapsed_time=(end_time.tv_sec-start_time.tv_sec)+(end_time.tv_nsec-start_time.tv_nsec)/1e9;
+    printf("Training Time (Old Monolithic): %f seconds\n",elapsed_time);
 
     FILE* test_images_file=fopen("mnist/t10k-images-idx3-ubyte","rb"); //test images file
     if(test_images_file==NULL)

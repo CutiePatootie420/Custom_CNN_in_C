@@ -10,10 +10,8 @@
 #define MAX_PIXEL_VAL 255
 #if defined(_WIN32)
     #include <windows.h>
-#elif defined(__APPLE__)
-    #include <sys/param.h>
-    #include <sys/sysctl.h>
-#elif defined(_linux_) || defined(__unix__)
+
+#else
     #include <unistd.h>
 #endif
 int get_cores()
@@ -22,24 +20,10 @@ int get_cores()
         SYSTEM_INFO sysinfo;
         GetSystemInfo(&sysinfo);
         return (int)sysinfo.dwNumberOfProcessors;
-    #elif defined(__APPLE__)
-        int nm[2];
-        int count=0;
-        size_t len=sizeof(count);
-        nm[0]=HW_NCPU;
-        nm[1]=HW_AVAILCPU;
-        sysctl(nm,2, &count, &len,NULL, 0);
-        if(count<1)
-        {
-            nm[1]=HW_NCPU;
-            sysctl(nm,2,&count,&len, NULL,0);
-        }
-        return count>0?count:1;
-    #elif defined(_SC_NPROCESSORS_ONLN)
-        return (int)sysconf(_SC_NPROCESSORS_ONLN);
     #else
-        printf("OS not identified\n");
-        return 1;
+        long count=sysconf(_SC_NPROCESSORS_ONLN);
+
+        return count>0?(int)count:1;
     #endif
 }
 int main()
@@ -51,7 +35,6 @@ int main()
         return 1;
     }
     label_file train_labels_file=read_label_file("mnist/train-labels-idx1-ubyte");
-
     unsigned char* train_images_pixels=malloc(sizeof(unsigned char)*train_images_file.images_num*IMAGE_SIZE); //training image pixel values
     if(fread(train_images_pixels,sizeof(unsigned char),IMAGE_SIZE*train_images_file.images_num,train_images_file.file)!=IMAGE_SIZE*train_images_file.images_num)
     {
@@ -64,6 +47,25 @@ int main()
         printf("Read unsuccessfull\n");
         return 1;
     }
+    image_file test_images_file=read_image_file("mnist/t10k-images-idx3-ubyte");
+    if(test_images_file.file==NULL)
+    {
+        return 1;
+    }
+    unsigned char* test_images_pixels=malloc(sizeof(unsigned char)*test_images_file.images_num*IMAGE_SIZE); //test set pixel values
+    if(fread(test_images_pixels, sizeof(unsigned char), IMAGE_SIZE*test_images_file.images_num, test_images_file.file)!=IMAGE_SIZE*test_images_file.images_num)
+    {
+        printf("Read unsuccessfull\n");
+        return 1;
+    }
+    label_file test_labels_file=read_label_file("mnist/t10k-labels-idx1-ubyte");
+    unsigned char* test_labels=malloc(sizeof(unsigned char)*test_labels_file.labels_num);
+    if(fread(test_labels,sizeof(unsigned char),test_labels_file.labels_num,test_labels_file.file)!=test_labels_file.labels_num)
+    {
+        printf("Read unsuccessfull\n");
+        return 1;
+    }
+
 
     printf("Enter the number of hidden layers you want in your MLP for MNIST dataset: ");
     int num_layers; // input and output layers
@@ -94,6 +96,10 @@ int main()
 
     state* buffer_arr=initialise_state_arr(num_threads_ideal, network,train_images_pixels,train_labels,train_images_file.images_num,0); //number of state buffers is equal to threads, each buffer will be passed to a thread
     pthread_t t_arr[num_threads_ideal]; //thread array
+
+    printf("Starting training...\n");
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     for(int e=0;e<epochs;e++)
     {
@@ -137,5 +143,54 @@ int main()
         }
     }
 
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time=(end_time.tv_sec-start_time.tv_sec)+(end_time.tv_nsec-start_time.tv_nsec)/1e9;
+    printf("Training Time (New Parallelized): %f seconds\n",elapsed_time);
+    printf("Training finished\n");
     clear_state_arr(buffer_arr, num_threads_ideal);
+    printf("Evaluating on test set...\n");
+    state* eval=initialise_state_arr(1, network, test_images_pixels, test_labels, test_images_file.images_num,1);
+    mlp* eval_net=eval->owner;
+    int* eval_p_sums=eval_net->p_sums;
+    int* eval_w_indices=eval_net->w_indices;
+    int eval_last_layer=eval_net->size-1;
+    double accuracy=0;
+    for(int image=0;image<test_images_file.images_num;image++)
+    {
+        for(int layer=0;layer<eval_net->size;layer++)
+        {
+            if(layer==0)
+            {
+                load_image(eval->activation, image, test_images_pixels);
+            }
+            else
+            {
+                for(int node=0;node<eval_net->summary[layer];node++)
+                {
+                    double temp=0;
+                    for(int prev_node=0;prev_node<eval_net->summary[layer-1];prev_node++)
+                    {
+                        temp+=eval->activation[eval_p_sums[layer-1]+prev_node]*eval_net->weights[eval_w_indices[layer-1]+prev_node*eval_net->summary[layer]+node];
+                    }
+                    temp+=eval_net->biases[eval_p_sums[layer]+node];
+                    eval->activation[eval_p_sums[layer]+node]=sigmoid_func(temp);
+                }
+            }
+        }
+        int prediction=0;
+        for(int i=0;i<eval_net->summary[eval_last_layer];i++)
+        {
+            if(eval->activation[eval_p_sums[eval_last_layer]+i]>eval->activation[eval_p_sums[eval_last_layer]+prediction])
+            {
+                prediction=i;
+            }
+        }
+        if(prediction==test_labels[image])
+        {
+            accuracy++;
+        }
+    }
+    accuracy/=test_images_file.images_num;
+    printf("%f accuracy on %d epochs, %d batch size, %f learning rate\n",accuracy*100,epochs,batch_size,learning_rate);
+    
 }
