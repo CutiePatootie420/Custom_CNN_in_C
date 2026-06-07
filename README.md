@@ -10,12 +10,16 @@ Trains on the full 60,000-image MNIST handwritten digit dataset and achieves **9
 
 ## Performance
 
-The final architecture is **100x faster** than the original single-threaded baseline, verified across identical hyperparameters (5 epochs, batch size 32, learning rate 0.1):
+The repository contains two versions:
+1. **V1 (Legacy Baseline)**: A single-threaded, matrix-pointer-chased (`double**`) implementation with a **hardcoded architecture** (fixed layers, nodes, and hyperparameters).
+2. **V2 (Optimized)**: A modular, cache-friendly, multi-threaded (`pthreads`) implementation with a **fully dynamic architecture** (allows user-defined layers, nodes, learning rates, batch sizes, and epochs at runtime).
 
-| Version | Training Time | Speedup |
-|---|---|---|
-| V1 — Single-threaded, pointer-chased `double**` matrices | 270 s | 1x |
-| V2 — Contiguous 1D arrays, recursive backprop, 8-core pthreads, SIMD auto-vectorization | **2.7 s** | **100x** |
+The optimized implementation is **100x faster** than the original baseline, verified across identical hyperparameters (5 epochs, batch size 32, learning rate 0.1):
+
+| Version | Source Code | Architecture Type | Training Time | Speedup |
+|---|---|---|---|---|
+| **V1 (Baseline)** | `mnist_digit_cnn.c` | **Hardcoded** (784 → 16 → 16 → 10) | 270 s | 1x |
+| **V2 (Optimized)** | `main.c` (+ modular files) | **Fully Dynamic** (User-defined at runtime) | **2.7 s** | **100x** |
 
 ### Where the 100x Comes From
 
@@ -30,7 +34,9 @@ The final architecture is **100x faster** than the original single-threaded base
 
 ## Architecture
 
-The network architecture is fully dynamic — any number of hidden layers with any number of nodes. The default configuration used for benchmarks:
+While the legacy version (**V1**) uses a hardcoded structure, the new optimized version (**V2**) is **fully dynamic** — supporting any number of hidden layers with any number of nodes per layer. 
+
+The default configuration used for benchmarks matching the baseline's topology:
 
 ```
 Input (784) → Hidden 1 (16, Sigmoid) → Hidden 2 (16, Sigmoid) → Output (10, Softmax + Cross-Entropy)
@@ -88,9 +94,15 @@ Weights are initialized from a uniform distribution in `[-0.5, 0.5]`, which clos
 
 ## File Structure
 
+The project code is divided into legacy baseline and optimized components:
+
+### Legacy Implementation (V1)
+* `mnist_digit_cnn.c` — Single-file, single-threaded pointer-chased matrix implementation. Uses a **hardcoded** architecture configuration.
+
+### Optimized Modular Implementation (V2)
 | File | Purpose |
 |---|---|
-| `main.c` | Training loop, thread orchestration, gradient aggregation, evaluation |
+| `main.c` | Training loop, thread orchestration, gradient aggregation, evaluation. Runs the **fully dynamic** setup |
 | `mlp.c` / `mlp.h` | Network creation, memory allocation, weight initialization, cleanup |
 | `thread_handler.c` / `thread_handler.h` | Thread state management, forward pass, backpropagation |
 | `file_handler.c` / `file_handler.h` | MNIST IDX binary file parser (big-endian) |
@@ -111,6 +123,7 @@ Weights are initialized from a uniform distribution in `[-0.5, 0.5]`, which clos
 
 ### Compile
 
+To compile the optimized dynamic multi-threaded version:
 ```bash
 gcc -Wall -O3 main.c mlp.c file_handler.c thread_handler.c -o main -lm
 ```
@@ -118,6 +131,11 @@ gcc -Wall -O3 main.c mlp.c file_handler.c thread_handler.c -o main -lm
 To verify SIMD auto-vectorization:
 ```bash
 gcc -Wall -O3 -Rpass=loop-vectorize main.c mlp.c file_handler.c thread_handler.c -o main -lm
+```
+
+To compile the legacy hardcoded version:
+```bash
+gcc -Wall -O3 mnist_digit_cnn.c -o mnist_digit_cnn -lm
 ```
 
 ### Run
