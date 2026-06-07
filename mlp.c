@@ -18,11 +18,11 @@ mlp* create_mlp(int* arr, int layers)
         }
         else
         {
+            if(layer!=layers-1)
+            {
+                temp->w_indices[layer]=temp->w_indices[layer-1]+arr[layer]*arr[layer-1];
+            }
             temp->p_sums[layer]=temp->p_sums[layer-1]+arr[layer-1]; //indices of z,a,b,etc: arr[p_sums[layer]+node]
-        }
-        if(layer!=layers-1)
-        {
-            temp->w_indices[layer]=temp->w_indices[layer-1]+arr[layer]*arr[layer-1];
         }
     }
     temp->total_biases=temp->p_sums[layers-1]+arr[layers-1];

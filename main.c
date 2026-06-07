@@ -116,6 +116,24 @@ int main()
             {
                 pthread_join(t_arr[thread],NULL);
             }
+            for(int i=IMAGE_SIZE;i<network->total_biases;i++)
+            {
+                double temp=0;
+                for(int t=0;t<num_threads_ideal;t++)
+                {
+                    temp+=buffer_arr[t].dL_db[i];
+                }
+                network->biases[i]-=(learning_rate*temp)/batch_size;
+            }
+            for(int i=0;i<network->total_weights;i++)
+            {
+                double temp=0;
+                for(int t=0;t<num_threads_ideal;t++)
+                {
+                    temp+=buffer_arr[t].dL_dw[i];
+                }
+                network->weights[i]-=(learning_rate*temp)/batch_size;
+            }
         }
     }
 
