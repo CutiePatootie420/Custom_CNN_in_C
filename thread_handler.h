@@ -9,10 +9,12 @@ typedef struct state
     int img_per_state;
     double* activation;
     double* z;
-    double* dc_da;
-    double* dc_db;
-    double* dc_dw;
+    double* dL_dz;
+    double* dL_db;
+    double* dL_dw;
 }state;
 state* initialise_state_arr(int threads, mlp* network,unsigned char* images, unsigned char* labels,int total_img,int img);
 void clear_state_arr(state* arr, int num);
 void* feedforward_and_backprop(void* temp);
+void load_image(double* activation,int idx, unsigned char* image);
+double sigmoid_func(double x);

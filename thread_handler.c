@@ -56,18 +56,24 @@ double sigmoid_func(double x)
 void* feedforward_and_backprop(void* temp)
 {
     state* arg=(state*)temp;
-    mlp* net=arg->owner; //to eliminate pointer chasing killing performance
+    mlp* net=arg->owner; // local reference to prevent pointer-chasing performance overhead
     int* p_sums=net->p_sums;
     int* w_indices=net->w_indices;
 
+    // Reset thread-local batch gradient buffers
     memset(arg->dL_db,0,sizeof(double)*(net->total_biases+IMAGE_SIZE));
     memset(arg->dL_dw,0,sizeof(double)*net->total_weights);
 
+    // Process worker's partition of the mini-batch
     for(int i=0;i<arg->img_per_state;i++)
     {
         memset(arg->dL_dz,0,sizeof(double)*(net->total_biases+IMAGE_SIZE));
-        int img_idx=abs(rand())%arg->total_images; //feedforward starts
+        
+        // Randomly sample an image from the dataset partition
+        int img_idx=abs(rand())%arg->total_images; 
         load_image(arg->activation,img_idx,arg->images);
+        
+        // ------------------ FEEDFORWARD PASS ------------------
         double softmax_temp=0;
         for(int layer=1;layer<net->size;layer++)
         {
@@ -76,53 +82,58 @@ void* feedforward_and_backprop(void* temp)
                 double temp=0;
                 for(int prev_node=0;prev_node<net->summary[layer-1];prev_node++)
                 {
+                    // Weight matrix mapping between layers: Row = prev_node, Col = node. Stride = size(layer)
                     temp+=net->weights[w_indices[layer-1]+prev_node*net->summary[layer]+node]*arg->activation[p_sums[layer-1]+prev_node];
                 }
                 arg->z[p_sums[layer]+node]=temp+net->biases[net->p_sums[layer]+node];
+                
                 if(layer!=net->size-1)
                 {
+                    // Apply Sigmoid activation function to hidden layers
                     arg->activation[p_sums[layer]+node]=sigmoid_func(arg->z[p_sums[layer]+node]);
                 }
                 else 
                 {
+                    // Sum exponential outputs for Softmax activation at the output layer
                     softmax_temp+=exp(arg->z[p_sums[layer]+node]);
                 }
             }
         }
+        
+        // Finalize Softmax probability output
         int last_layer=net->size-1;
-        for(int node=0;node<net->summary[last_layer];node++) //softmax activation for last layer nodes
+        for(int node=0;node<net->summary[last_layer];node++) 
         {
             arg->activation[p_sums[last_layer]+node]=exp(arg->z[p_sums[last_layer]+node])/softmax_temp;
         } 
 
-        for(int layer=last_layer;layer>0;layer--) //backprop
+        // ------------------ BACKPROPAGATION PASS ------------------
+        // Loop backwards starting from output layer down to the first hidden layer
+        for(int layer=last_layer;layer>0;layer--) 
         {
             for(int node=0;node<net->summary[layer];node++)
             {
                 if(layer==last_layer)
                 {
-                    int y;
-                    if(arg->labels[img_idx]==node)
-                    {
-                        y=1;
-                    }
-                    else
-                    {
-                        y=0;
-                    }
+                    // For Softmax + Cross-Entropy, output derivative simplifies to: dL/dz = activation - target
+                    int y = (arg->labels[img_idx] == node) ? 1 : 0;
                     arg->dL_dz[p_sums[layer]+node]=arg->activation[p_sums[layer]+node]-y;
                 }
                 else
                 {
+                    // Hidden layer error delta propagation: delta = sum(delta_next * weight_next) * sigmoid'(z)
+                    // Row = node (current layer), Col = next_node (next layer). Stride = size(layer+1)
                     for(int next_node=0;next_node<net->summary[layer+1];next_node++)
                     {
                         arg->dL_dz[p_sums[layer]+node]+=arg->dL_dz[p_sums[layer+1]+next_node]*net->weights[w_indices[layer]+node*net->summary[layer+1]+next_node]*arg->activation[p_sums[layer]+node]*(1-arg->activation[p_sums[layer]+node]);
                     }
                 }
+                // Accumulate local bias gradients: dL/db = delta
                 arg->dL_db[p_sums[layer]+node]+=arg->dL_dz[p_sums[layer]+node];
-                
             }
         }
+        
+        // Accumulate local weight gradients: dL/dw = delta_next * activation_current
         for(int layer=last_layer-1;layer>=0;layer--)
         {
             for(int node=0;node<net->summary[layer];node++)

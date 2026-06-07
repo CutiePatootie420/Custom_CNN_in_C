@@ -5,9 +5,10 @@ mlp* create_mlp(int* arr, int layers)
 {
     mlp* temp=malloc(sizeof(mlp));
     temp->size=layers;
-    temp->summary=malloc(sizeof(int)*layers);
-    temp->p_sums=malloc(sizeof(int)*layers);
-    temp->w_indices=malloc(sizeof(int)*(layers-1));
+    temp->summary=malloc(sizeof(int)*layers); // Stores the number of nodes per layer
+    temp->p_sums=malloc(sizeof(int)*layers); // Stores bias/activation offset prefix sums for flat 1D allocation
+    temp->w_indices=malloc(sizeof(int)*(layers-1)); // Stores weight offsets mapping for transitions between layers
+    
     for(int layer=0;layer<layers;layer++)
     {
         temp->summary[layer]=arr[layer];
@@ -20,14 +21,19 @@ mlp* create_mlp(int* arr, int layers)
         {
             if(layer!=layers-1)
             {
+                // Weight offsets: cumulative sum of weights in previous layer transitions (nodes_current * nodes_previous)
                 temp->w_indices[layer]=temp->w_indices[layer-1]+arr[layer]*arr[layer-1];
             }
-            temp->p_sums[layer]=temp->p_sums[layer-1]+arr[layer-1]; //indices of z,a,b,etc: arr[p_sums[layer]+node]
+            // Bias/activation offsets: prefix sum to map index to start of each layer's block
+            temp->p_sums[layer]=temp->p_sums[layer-1]+arr[layer-1]; // indices of z,a,b,etc: arr[p_sums[layer]+node]
         }
     }
+    // Calculate total allocation sizes for flat contiguous arrays
     temp->total_biases=temp->p_sums[layers-1]+arr[layers-1];
     temp->total_weights=temp->w_indices[layers-2]+arr[layers-1]*arr[layers-2];
-    temp->biases=malloc(sizeof(double)*(temp->total_biases+IMAGE_SIZE)); //first 784 elements of this arr are redundant but we add to maintain similarity of array access
+    
+    // Contiguous bias allocation (padded by IMAGE_SIZE to keep input indexing aligned)
+    temp->biases=malloc(sizeof(double)*(temp->total_biases+IMAGE_SIZE)); 
     temp->weights=malloc(sizeof(double)*temp->total_weights);
     return temp;
 }

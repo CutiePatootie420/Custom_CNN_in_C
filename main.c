@@ -109,22 +109,29 @@ int main()
         int batches=train_images_file.images_num/batch_size;
         for(int b=0;b<batches;b++)
         {
+            // Allocate mini-batch partitions dynamically across active worker threads
             for(int thread=0;thread<num_threads_ideal;thread++)
             {
                 if(thread==num_threads_ideal-1)
                 {
-                    buffer_arr[thread].img_per_state=batch_size/num_threads_ideal+batch_size%num_threads_ideal; //give the remaining images to last thread
+                    // Give remaining leftover images to the last thread to balance work
+                    buffer_arr[thread].img_per_state=batch_size/num_threads_ideal+batch_size%num_threads_ideal; 
                 }
                 else
                 {
                     buffer_arr[thread].img_per_state=batch_size/num_threads_ideal;
                 }
+                // Spawn worker thread to run feedforward + backprop on its partition
                 pthread_create(&t_arr[thread],NULL,feedforward_and_backprop,&buffer_arr[thread]);
             }
+            
+            // Barrier synchronization: Wait for all thread workers to finish their passes
             for(int thread=0;thread<num_threads_ideal;thread++)
             {
                 pthread_join(t_arr[thread],NULL);
             }
+            
+            // Gradient aggregation: Sum local thread bias gradients and perform SGD update
             for(int i=IMAGE_SIZE;i<network->total_biases;i++)
             {
                 double temp=0;
@@ -134,6 +141,8 @@ int main()
                 }
                 network->biases[i]-=(learning_rate*temp)/batch_size;
             }
+            
+            // Gradient aggregation: Sum local thread weight gradients and perform SGD update
             for(int i=0;i<network->total_weights;i++)
             {
                 double temp=0;
