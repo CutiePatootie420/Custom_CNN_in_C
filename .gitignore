@@ -1,6 +1,21 @@
+# Dataset
+mnist/
+
+# Compiled Binaries (no extension on macOS/Linux)
+main
+perceptron
+perceptron_run
 mnist_cnn
 mnist_digit_cnn
+mlp_optimized
 temp
-tempCodeRunnerFile.c
-.DS_Store
+tempp
 
+# Object Files / Executables
+*.o
+*.out
+
+# OS / IDE Clutter
+.DS_Store
+tempCodeRunnerFile.c
+.vscode/
