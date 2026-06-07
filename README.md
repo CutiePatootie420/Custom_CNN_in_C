@@ -1,123 +1,159 @@
+# Neural Network from Scratch in C
+
+A high-performance, multi-threaded neural network library written entirely in C — **zero ML frameworks, zero external libraries**. Only standard C and POSIX headers.
+
+Trains on the full 60,000-image MNIST handwritten digit dataset and achieves **91.84% test accuracy** in **2.7 seconds** on an 8-core Apple Silicon CPU.
+
 ![CNN Illustration](./images/cnn%20illustration.png)
-# MNIST digit classifier from scratch in C
-
-A lightweight, high-performance 4-layer Multilayer Perceptron (MLP) written entirely from scratch in single-threaded C. This engine contains **zero external machine learning libraries or frameworks**—only standard C headers (`stdlib.h`, `math.h`, `stdio.h`, etc.) are used. 
-
-The network achieves **91.74% test accuracy** on the 10,000-image MNIST test set in just 5 training epochs.
 
 ---
 
-## Key Features
-* **Zero Dependencies:** Built entirely from scratch in C.
-* **Backpropagation:** Full analytical gradient derivation across all hidden layers.
-* **Softmax + Cross-Entropy:** Mathematically decoupled backpropagation for high stability and fast learning.
-* **Xavier-Glorot approximated initialization:** Healthy weight variance to prevent vanishing or exploding gradients.
-* **100% Memory & Resource Safe:** Zero memory leaks, proper cleanup, and closed file descriptors.
-* **Fast CPU Training:** Custom progress-logging limits IO bottlenecks, executing thousands of mini-batch updates in minutes on a single CPU thread.
+## Performance
+
+The final architecture is **100x faster** than the original single-threaded baseline, verified across identical hyperparameters (5 epochs, batch size 32, learning rate 0.1):
+
+| Version | Training Time | Speedup |
+|---|---|---|
+| V1 — Single-threaded, pointer-chased `double**` matrices | 270 s | 1x |
+| V2 — Contiguous 1D arrays, recursive backprop, 8-core pthreads, SIMD auto-vectorization | **2.7 s** | **100x** |
+
+### Where the 100x Comes From
+
+| Optimization | What Changed |
+|---|---|
+| **Algorithmic** | Replaced redundant $O(N^3)$ output-layer backprop with recursive $\delta$-based $O(N^2)$ propagation |
+| **Memory** | Replaced scattered `double**` pointer tables with flat contiguous 1D arrays — unlocks L1/L2 cache prefetching |
+| **Parallelism** | Distributed mini-batches across all 8 CPU cores via POSIX Threads (`pthreads`) with thread-local gradient buffers |
+| **SIMD** | Contiguous memory layout allows the compiler to auto-vectorize inner loops (verified with `-Rpass=loop-vectorize`) |
 
 ---
 
-## Network Architecture
-The network uses a compressed architecture to balance performance and capacity:
+## Architecture
 
-* **Input Layer (L0):** 784 Neurons (MNIST raw pixels, normalized $[0, 1]$)
-* **Hidden Layer 1 (L1):** 16 Neurons (Sigmoid activation)
-* **Hidden Layer 2 (L2):** 16 Neurons (Sigmoid activation)
-* **Output Layer (L3):** 10 Neurons (Softmax activation + Cross-Entropy Loss)
-* Note: No biases are allocated for the input layer (L0).
+The network architecture is fully dynamic — any number of hidden layers with any number of nodes. The default configuration used for benchmarks:
 
----
+```
+Input (784) → Hidden 1 (16, Sigmoid) → Hidden 2 (16, Sigmoid) → Output (10, Softmax + Cross-Entropy)
+```
 
-## Deep Learning Mathematics 
+### Memory Layout
 
-### 1. Softmax Activation (Probability Outputs)
-In the final layer, we map the raw outputs $z^{(3)}_i$ to a probability distribution where all activations sum to $1$:
+All network parameters are stored in flat 1D arrays indexed via precomputed prefix sums (`p_sums`) and weight offset tables (`w_indices`). This eliminates pointer chasing and enables the CPU to stream data sequentially through cache lines.
 
-$$a^{(3)}_i = \frac{e^{z^{(3)}_i}}{\sum_k e^{z^{(3)}_k}}$$
+```
+biases:   [ --- L0 (784, unused) --- | --- L1 --- | --- L2 --- | ... | --- Ln --- ]
+                                       ^                         ^
+                                  p_sums[1]                 p_sums[n]
 
-#### 💡 Numerical Stability (Softmax Normalization)
-Exponentiating large raw outputs ($z_i \geq 80$) leads to floating-point overflows (`inf`), which infects the training gradients with `NaN`. To prevent this, this engine implements **Softmax Normalization** by subtracting the maximum raw value in the output layer ($z_{\text{max}}$) before exponentiating:
+weights:  [ --- L0→L1 --- | --- L1→L2 --- | ... | --- L(n-1)→Ln --- ]
+                ^                                       ^
+           w_indices[0]                            w_indices[n-1]
+```
 
-$$a^{(3)}_i = \frac{e^{z^{(3)}_i - z_{\text{max}}}}{\sum_k e^{z^{(3)}_k - z_{\text{max}}}}$$
+### Multi-Threading Model
 
-This is mathematically identical but bounds all exponent inputs to $\leq 0$, ensuring $e^{\text{negative}} \leq 1.0$, completely protecting the network from runtime crashes.
-
----
-
-### 2. The Softmax + Cross-Entropy Mathematical Miracle
-When you train a network using **Mean Squared Error (MSE)** and Sigmoid outputs, the learning rates drop to near-zero as the network gets confident because the derivative of Sigmoid $\sigma'(z)$ saturates.
-
-By combining **Softmax** activation with **Cross-Entropy Loss**:
-$$\mathcal{L} = -\sum_i y_i \ln(a_i)$$
-
-the derivative of the loss with respect to the output raw weighted input $z_i$ simplifies to:
-
-$$\frac{\partial \mathcal{L}}{\partial z_i} = a_i - y_i$$
-
-This is a mathematical miracle because the derivative of the Softmax quotient rule and the derivative of the natural log **perfectly cancel out all divisions, logs, and exponents!** 
-
-In C, the error is simply `cost.parameter[i] = activation[i] - target[i]`. This removes all complex output-layer calculations from the backpropagation chain, making updates extremely fast and stable.
+Each thread in the pool receives a partition of the mini-batch and computes forward pass + backpropagation independently into **thread-local gradient buffers** (`dL_dw`, `dL_db`). After all threads finish (`pthread_join`), the main thread aggregates gradients and updates the shared weights. This design has **zero race conditions** — threads only read from shared weights during the forward pass and write exclusively to their own local buffers.
 
 ---
 
-### 3. Xavier (Glorot) Weight Initialization
-Weights are initialized randomly using a uniform distribution in the range `[-0.5, 0.5]`. 
+## Deep Learning Mathematics
 
-This range approximates the mathematically ideal **Xavier Initialization** standard deviation ($\sigma = \sqrt{\frac{2}{N_{in} + N_{out}}}$) for the hidden layers:
-* **L1 $\rightarrow$ L2:** Ideal range is approx `[-0.43, 0.43]`
-* **L2 $\rightarrow$ L3:** Ideal range is approx `[-0.48, 0.48]`
+### Softmax + Cross-Entropy Loss
 
-By initializing near these exact ranges, the network ensures that signal variance remains constant across all layers, preventing early vanishing or exploding gradients.
+The output layer uses Softmax activation:
 
----
+$$a^{(L)}_i = \frac{e^{z^{(L)}_i}}{\sum_k e^{z^{(L)}_k}}$$
 
-## Systems
+Combined with Cross-Entropy loss $\mathcal{L} = -\sum_i y_i \ln(a_i)$, the gradient simplifies to:
 
-* **Preventing IO Bottlenecks:** Logging is throttled to print only once every 500 batches, eliminating terminal output latency and speeding up training by over 20x.
-* **Leak-Free Memory Safety:** Implements strict, reversed-order heap cleanup (`free`) for all dynamically allocated matrices and safe closure of IDX binary file handles (`fclose`) upon termination.
+$$\frac{\partial \mathcal{L}}{\partial z^{(L)}_i} = a^{(L)}_i - y_i$$
 
----
+This eliminates all log/exp/division from the backward pass. In C: `dL_dz[i] = activation[i] - target[i]`.
 
-## How to Compile and Run
+### Recursive Backpropagation
 
-1. Make sure you have the MNIST dataset binary files inside a directory named `mnist/` inside the project root:
-   * `train-images-idx3-ubyte`
-   * `train-labels-idx1-ubyte`
-   * `t10k-images-idx3-ubyte`
-   * `t10k-labels-idx1-ubyte`
+Hidden layer error signals are computed recursively, propagating backward from the output:
 
-2. Compile the source code using `gcc` (with `-O3` optimization for automatic vectorization):
-   > gcc -Wall -O3 mnist_digit_cnn.c -o mnist_digit_cnn -lm
+$$\delta^{(l)}_i = \left(\sum_j \delta^{(l+1)}_j \cdot w^{(l)}_{ij}\right) \cdot a^{(l)}_i \cdot (1 - a^{(l)}_i)$$
 
-3. Run the binary:
-   > ./mnist_digit_cnn
+This avoids redundantly recomputing the entire forward chain for every layer. Weight gradients are then:
+
+$$\frac{\partial \mathcal{L}}{\partial w^{(l)}_{ij}} = \delta^{(l+1)}_j \cdot a^{(l)}_i$$
+
+### Xavier-Glorot Weight Initialization
+
+Weights are initialized from a uniform distribution in `[-0.5, 0.5]`, which closely approximates the ideal Xavier standard deviation $\sigma = \sqrt{\frac{2}{N_{in} + N_{out}}}$ for the hidden layer configurations used, preventing vanishing/exploding gradients during early training.
 
 ---
 
-## Sample Output
-```text
-Epoch 0, mini-batch 0, iteration 31:
-Prediction: 7 | Actual: 6
+## File Structure
 
-Epoch 2, mini-batch 500, iteration 31:
-Prediction: 1 | Actual: 1
+| File | Purpose |
+|---|---|
+| `main.c` | Training loop, thread orchestration, gradient aggregation, evaluation |
+| `mlp.c` / `mlp.h` | Network creation, memory allocation, weight initialization, cleanup |
+| `thread_handler.c` / `thread_handler.h` | Thread state management, forward pass, backpropagation |
+| `file_handler.c` / `file_handler.h` | MNIST IDX binary file parser (big-endian) |
 
-Epoch 4, mini-batch 1500, iteration 31:
-0: 0.006124
-1: 0.005128
-2: 0.039874
-3: 0.010214
-4: 0.123024
-5: 0.008793
-6: 0.037789
-7: 0.595895
-8: 0.011101
-9: 0.161070
-Prediction: 7 | Actual: 7
+---
 
-=========================================
-FINAL TEST SET ACCURACY: 91.74% (9174/10000 correct)
-=========================================
+## Build & Run
 
+### Prerequisites
+- GCC or Clang with C99 support
+- MNIST dataset files in a `mnist/` directory:
+  - `train-images-idx3-ubyte`
+  - `train-labels-idx1-ubyte`
+  - `t10k-images-idx3-ubyte`
+  - `t10k-labels-idx1-ubyte`
 
+> MNIST can be downloaded from [Yann LeCun's website](http://yann.lecun.com/exdb/mnist/).
 
+### Compile
+
+```bash
+gcc -Wall -O3 main.c mlp.c file_handler.c thread_handler.c -o main -lm
+```
+
+To verify SIMD auto-vectorization:
+```bash
+gcc -Wall -O3 -Rpass=loop-vectorize main.c mlp.c file_handler.c thread_handler.c -o main -lm
+```
+
+### Run
+
+```bash
+./main
+```
+
+The program will prompt you for:
+1. Number of hidden layers
+2. Nodes per hidden layer
+3. Learning rate
+4. Batch size
+5. Number of epochs
+
+### Sample Output
+
+```
+Enter the number of hidden layers you want in your MLP for MNIST dataset: 2
+Enter number of nodes in hidden layer 0: 16
+Enter number of nodes in hidden layer 1: 16
+Enter desired learning rate: 0.1
+Enter desired bacth size (preferred like 2,4,16,32...): 32
+Enter desired epochs: 5
+avl cores: 8
+Starting training...
+Training Time (New Parallelized): 2.692629 seconds
+Training finished
+Evaluating on test set...
+91.840000 accuracy on 5 epochs, 32 batch size, 0.100000 learning rate
+```
+
+---
+
+## Built With
+
+`stdlib.h` · `stdio.h` · `math.h` · `string.h` · `time.h` · `pthread.h` · `unistd.h`
+
+Nothing else.
