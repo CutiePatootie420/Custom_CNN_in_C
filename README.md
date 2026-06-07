@@ -56,6 +56,15 @@ weights:  [ --- L0→L1 --- | --- L1→L2 --- | ... | --- L(n-1)→Ln --- ]
            w_indices[0]                            w_indices[n-1]
 ```
 
+### SIMD Auto-Vectorization & Cache Coherency
+
+By structuring all weights, biases, and activations into flat 1D contiguous arrays, the CPU can stream data sequentially through cache lines. This layout eliminates pointer chasing and enables the compiler (using `-O3`) to automatically vectorize the inner loops using hardware SIMD registers (NEON on ARM/Apple Silicon, AVX on x86).
+
+Compiling with `-Rpass=loop-vectorize` confirms active auto-vectorization of critical loops:
+* Feedforward dot-product loops are vectorized (width 2, interleave 4).
+* Activation load loops are vectorized (width 16, interleave 1).
+* Dynamic weight gradient accumulation loops are vectorized (width 2, interleave 4).
+
 ### Dynamic Multi-Threading Model
 
 Thread initialization and creation are kept **fully dynamic**. At runtime, the program queries the operating system for the number of available CPU cores (using `sysconf(_SC_NPROCESSORS_ONLN)` on UNIX/macOS and `GetSystemInfo` on Windows) and spawns exactly `min(available_cores, batch_size)` threads to maximize hardware utilization.
