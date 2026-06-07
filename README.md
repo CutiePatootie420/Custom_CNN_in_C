@@ -56,9 +56,11 @@ weights:  [ --- L0→L1 --- | --- L1→L2 --- | ... | --- L(n-1)→Ln --- ]
            w_indices[0]                            w_indices[n-1]
 ```
 
-### Multi-Threading Model
+### Dynamic Multi-Threading Model
 
-Each thread in the pool receives a partition of the mini-batch and computes forward pass + backpropagation independently into **thread-local gradient buffers** (`dL_dw`, `dL_db`). After all threads finish (`pthread_join`), the main thread aggregates gradients and updates the shared weights. This design has **zero race conditions** — threads only read from shared weights during the forward pass and write exclusively to their own local buffers.
+Thread initialization and creation are kept **fully dynamic**. At runtime, the program queries the operating system for the number of available CPU cores (using `sysconf(_SC_NPROCESSORS_ONLN)` on UNIX/macOS and `GetSystemInfo` on Windows) and spawns exactly `min(available_cores, batch_size)` threads to maximize hardware utilization.
+
+Each worker thread receives a partition of the mini-batch and computes the forward pass + backpropagation independently. Because threads write exclusively to their own **thread-local gradient buffers** (`dL_dw`, `dL_db`) and only read from the shared weights during forward propagation, the system achieves **zero race conditions** and avoids all lock/mutex synchronization overhead. The main thread aggregates the gradients and updates the shared network parameters only after all worker threads finish execution (`pthread_join`).
 
 ---
 
